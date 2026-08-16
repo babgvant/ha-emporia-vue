@@ -10,10 +10,13 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.components.energy.data import async_get_manager
-from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor import (
+    ATTR_STATE_CLASS,
+    SensorDeviceClass,
+    SensorStateClass,
+)
 from homeassistant.const import (
     ATTR_DEVICE_CLASS,
-    ATTR_STATE_CLASS,
     ATTR_UNIT_OF_MEASUREMENT,
     UnitOfEnergy,
 )
