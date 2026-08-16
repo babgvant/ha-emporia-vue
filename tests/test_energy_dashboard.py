@@ -1,12 +1,14 @@
 """Tests for Energy Dashboard bulk configuration helpers."""
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from custom_components.emporia_vue.energy_dashboard import (
     circuit_energy_unique_id,
     descendant_gids,
     is_consumptive_circuit,
     merge_device_consumption,
+    registered_energy_entity_id,
 )
 
 
@@ -73,6 +75,20 @@ def test_power_and_aggregate_channels_are_ignored_by_metadata() -> None:
     assert not is_consumptive_circuit(Channel("MainsFromGrid"))
     assert not is_consumptive_circuit(Channel("4", channel_type_gid=13))
     assert not is_consumptive_circuit(Channel("5", type="Bidirectional"))
+
+
+def test_registered_energy_entity_does_not_require_live_state() -> None:
+    """Setup-time bulk add uses the registry before states are published."""
+    unique_id = circuit_energy_unique_id(1, "4")
+    entries = {
+        unique_id: SimpleNamespace(
+            entity_id="sensor.hvac_energy_today", disabled_by=None
+        )
+    }
+    assert (
+        registered_energy_entity_id(entries, unique_id)
+        == "sensor.hvac_energy_today"
+    )
 
 
 def test_combined_monitor_tree_excludes_unrelated_roots() -> None:

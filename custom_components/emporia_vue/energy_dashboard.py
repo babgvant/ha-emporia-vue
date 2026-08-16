@@ -11,16 +11,6 @@ from pyemvue.enums import Scale
 import voluptuous as vol
 
 from homeassistant.components.energy.data import async_get_manager
-from homeassistant.components.sensor import (
-    ATTR_STATE_CLASS,
-    SensorDeviceClass,
-    SensorStateClass,
-)
-from homeassistant.const import (
-    ATTR_DEVICE_CLASS,
-    ATTR_UNIT_OF_MEASUREMENT,
-    UnitOfEnergy,
-)
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import (
@@ -78,6 +68,18 @@ def circuit_energy_unique_id(device_gid: int, channel_num: str) -> str:
     )
 
 
+def registered_energy_entity_id(
+    entries_by_unique_id: Mapping[str, Any], unique_id: str
+) -> str | None:
+    """Return an enabled registered entity without requiring a published state."""
+    if (
+        (entry := entries_by_unique_id.get(unique_id)) is None
+        or entry.disabled_by is not None
+    ):
+        return None
+    return entry.entity_id
+
+
 def merge_device_consumption(
     existing: Iterable[dict[str, Any]], statistic_ids: Iterable[str]
 ) -> tuple[list[dict[str, Any]], int, int]:
@@ -106,19 +108,6 @@ def _device_gid(device: dr.DeviceEntry) -> int:
                     f"Emporia device has an invalid identifier: {identifier}"
                 ) from err
     raise HomeAssistantError("The selected device is not an Emporia Vue monitor")
-
-
-def _is_energy_state_compatible(hass: HomeAssistant, entity_id: str) -> bool:
-    """Verify the entity can produce the long-term sum Energy consumes."""
-    state = hass.states.get(entity_id)
-    if state is None:
-        return False
-    return (
-        state.attributes.get(ATTR_DEVICE_CLASS) == SensorDeviceClass.ENERGY
-        and state.attributes.get(ATTR_STATE_CLASS)
-        in (SensorStateClass.TOTAL, SensorStateClass.TOTAL_INCREASING)
-        and state.attributes.get(ATTR_UNIT_OF_MEASUREMENT) in set(UnitOfEnergy)
-    )
 
 
 async def async_setup_energy_dashboard_service(hass: HomeAssistant) -> None:
@@ -171,9 +160,9 @@ async def async_add_circuits_to_energy_dashboard(
     devices = hass.data[DOMAIN][entry_id]["device_information"]
     entity_registry = er.async_get(hass)
     entries_by_unique_id = {
-            entry.unique_id: entry
-            for entry in entity_registry.entities.values()
-            if entry.config_entry_id == entry_id and entry.platform == DOMAIN
+        entry.unique_id: entry
+        for entry in entity_registry.entities.values()
+        if entry.config_entry_id == entry_id and entry.platform == DOMAIN
     }
     statistic_ids: list[str] = []
     skipped_aggregate = skipped_incompatible = 0
@@ -186,12 +175,13 @@ async def async_add_circuits_to_energy_dashboard(
                 continue
             unique_id = circuit_energy_unique_id(gid, channel.channel_num)
             if (
-                (entry := entries_by_unique_id.get(unique_id)) is None
-                or not _is_energy_state_compatible(hass, entry.entity_id)
-            ):
+                entity_id := registered_energy_entity_id(
+                    entries_by_unique_id, unique_id
+                )
+            ) is None:
                 skipped_incompatible += 1
                 continue
-            statistic_ids.append(entry.entity_id)
+            statistic_ids.append(entity_id)
 
     update_lock = hass.data[DOMAIN].setdefault(
         DATA_ENERGY_UPDATE_LOCK, asyncio.Lock()
