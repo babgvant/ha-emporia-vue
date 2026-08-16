@@ -65,6 +65,13 @@ def test_new_selected_root_joins_virtual_home() -> None:
     assert aggregate_root_gids(devices, ["1", "3"]) == [1, 3]
 
 
+def test_visible_monitor_can_be_excluded_from_virtual_home() -> None:
+    """Polling selection and virtual aggregation are independent."""
+    devices = device_map()
+    assert selected_device_gids(devices, ["1", "3"]) == {1, 2, 3}
+    assert aggregate_root_gids(devices, ["1"]) == [1]
+
+
 def test_missing_selection_preserves_all_devices() -> None:
     """Legacy entries without a filter retain the old behavior."""
     assert selected_device_gids(device_map(), None) == {1, 2, 3, 4}

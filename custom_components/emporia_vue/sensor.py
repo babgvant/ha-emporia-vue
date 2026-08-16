@@ -21,6 +21,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     CONF_MONITOR_GIDS,
     CONF_VIRTUAL_HOME,
+    CONF_VIRTUAL_HOME_GIDS,
     CUSTOMER_GID,
     DOMAIN,
 )
@@ -45,10 +46,17 @@ async def async_setup_entry(
     device_information: dict[int, VueDevice] = hass.data[DOMAIN][
         config_entry.entry_id
     ]["device_information"]
-    virtual_home = config_entry.data.get(CONF_VIRTUAL_HOME, False)
+    configured_virtual_gids = config_entry.data.get(CONF_VIRTUAL_HOME_GIDS)
+    if configured_virtual_gids is None:
+        # Preserve the behavior of entries created before independent selection.
+        configured_virtual_gids = (
+            config_entry.data.get(CONF_MONITOR_GIDS, [])
+            if config_entry.data.get(CONF_VIRTUAL_HOME, False)
+            else []
+        )
     virtual_source_gids = aggregate_root_gids(
         device_information,
-        config_entry.data.get(CONF_MONITOR_GIDS, []),
+        configured_virtual_gids,
     )
 
     def entities_for(coordinator) -> list[SensorEntity]:
@@ -57,7 +65,7 @@ async def async_setup_entry(
             CurrentVuePowerSensor(coordinator, identifier)
             for identifier in coordinator.data
         ]
-        if virtual_home:
+        if virtual_source_gids:
             entities.append(
                 VirtualHomeSensor(
                     coordinator,

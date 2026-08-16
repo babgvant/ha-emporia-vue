@@ -42,6 +42,7 @@ from .const import (
     AUTH_METHOD_EMAIL_PASSWORD,
     AUTH_METHOD_TOKENS,
     CONF_ACCESS_TOKEN,
+    CONF_ADD_CIRCUITS_TO_ENERGY,
     CONF_ID_TOKEN,
     CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
@@ -54,7 +55,10 @@ from .const import (
     VUE_DATA,
 )
 from .hierarchy import merge_devices, selected_device_gids
-from .energy_dashboard import async_setup_energy_dashboard_service
+from .energy_dashboard import (
+    async_add_circuits_to_energy_dashboard,
+    async_setup_energy_dashboard_service,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -521,6 +525,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:
         _LOGGER.warning("Error setting up platforms: %s", err)
         raise ConfigEntryNotReady(f"Error setting up platforms: {err}") from err
+
+    if entry.data.get(CONF_ADD_CIRCUITS_TO_ENERGY, False):
+        try:
+            result = await async_add_circuits_to_energy_dashboard(
+                hass, entry.entry_id, runtime.device_information
+            )
+            _LOGGER.info("Automatic Energy Dashboard update: %s", result)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unable to add Emporia circuits to Energy Dashboard")
+        finally:
+            hass.config_entries.async_update_entry(
+                entry,
+                data={**entry.data, CONF_ADD_CIRCUITS_TO_ENERGY: False},
+            )
 
     return True
 

@@ -23,21 +23,24 @@
                 "title": "Authentication expired for {name}"
             },
             "reconfigure": {
+                "description": "Monitors can be available in Home Assistant without contributing to Virtual Home. Select only non-overlapping monitor totals for Virtual Home to avoid double counting.",
                 "data": {
                     "enable_1d": "Energy Today Sensor",
                     "enable_1m": "Power Minute Average Sensor",
                     "enable_1mon": "Energy This Month Sensor",
                     "solar_invert": "Invert Values for Solar Circuits",
                     "monitor_gids": "Monitors to include",
-                    "virtual_home": "Create a virtual home total from selected monitors"
+                    "virtual_home_gids": "Monitors to include in Virtual Home",
+                    "add_circuits_to_energy_dashboard": "Add eligible circuits to Energy Dashboard when saved"
                 }
             },
             "select_monitors": {
                 "data": {
                     "monitor_gids": "Monitors to include",
-                    "virtual_home": "Create a virtual home total from selected monitors"
+                    "virtual_home_gids": "Monitors to include in Virtual Home",
+                    "add_circuits_to_energy_dashboard": "Add eligible circuits to Energy Dashboard after setup"
                 },
-                "description": "Choose which Emporia Vue monitors should be available in this Home Assistant installation. Selecting a monitor automatically includes its nested monitors.",
+                "description": "Choose which monitors are available in Home Assistant, then separately choose which included monitors contribute to Virtual Home. Exclude subpanels from Virtual Home to avoid double counting. Selecting a monitor automatically includes its nested monitors.",
                 "title": "Select monitors"
             },
             "user": {

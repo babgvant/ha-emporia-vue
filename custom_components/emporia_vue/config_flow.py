@@ -19,10 +19,12 @@ from .const import (
     AUTH_METHOD_SCHEMA,
     AUTH_METHOD_TOKENS,
     CONF_ACCESS_TOKEN,
+    CONF_ADD_CIRCUITS_TO_ENERGY,
     CONF_ID_TOKEN,
     CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
     CONF_VIRTUAL_HOME,
+    CONF_VIRTUAL_HOME_GIDS,
     CONFIG_FLOW_SCHEMA,
     CONFIG_TITLE,
     CUSTOMER_GID,
@@ -175,8 +177,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="unknown")
         if user_input is not None:
             data = dict(self._pending_entry_data)
-            data[CONF_MONITOR_GIDS] = list(user_input[CONF_MONITOR_GIDS])
-            data[CONF_VIRTUAL_HOME] = user_input[CONF_VIRTUAL_HOME]
+            monitor_gids = list(user_input[CONF_MONITOR_GIDS])
+            virtual_home_gids = [
+                gid
+                for gid in user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
+                if gid in monitor_gids
+            ]
+            data[CONF_MONITOR_GIDS] = monitor_gids
+            data[CONF_VIRTUAL_HOME_GIDS] = virtual_home_gids
+            data[CONF_VIRTUAL_HOME] = bool(virtual_home_gids)
+            data[CONF_ADD_CIRCUITS_TO_ENERGY] = user_input.get(
+                CONF_ADD_CIRCUITS_TO_ENERGY, False
+            )
             return self.async_create_entry(title=data[CONFIG_TITLE], data=data)
         return self.async_show_form(
             step_id="select_monitors",
@@ -189,7 +201,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         cv.multi_select(self._pending_monitor_options),
                         vol.Length(min=1),
                     ),
-                    vol.Optional(CONF_VIRTUAL_HOME, default=False): cv.boolean,
+                    vol.Optional(
+                        CONF_VIRTUAL_HOME_GIDS,
+                        default=[],
+                    ): cv.multi_select(self._pending_monitor_options),
+                    vol.Optional(
+                        CONF_ADD_CIRCUITS_TO_ENERGY, default=False
+                    ): cv.boolean,
                 }
             ),
         )
@@ -302,13 +320,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             await self.async_set_unique_id(info[CUSTOMER_GID])
             self._abort_if_unique_id_mismatch(reason="wrong_account")
+            monitor_gids = list(user_input[CONF_MONITOR_GIDS])
+            virtual_home_gids = [
+                gid
+                for gid in user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
+                if gid in monitor_gids
+            ]
             data = {
                 ENABLE_1M: user_input[ENABLE_1M],
                 ENABLE_1D: user_input[ENABLE_1D],
                 ENABLE_1MON: user_input[ENABLE_1MON],
                 SOLAR_INVERT: user_input[SOLAR_INVERT],
-                CONF_MONITOR_GIDS: list(user_input[CONF_MONITOR_GIDS]),
-                CONF_VIRTUAL_HOME: user_input[CONF_VIRTUAL_HOME],
+                CONF_MONITOR_GIDS: monitor_gids,
+                CONF_VIRTUAL_HOME_GIDS: virtual_home_gids,
+                CONF_VIRTUAL_HOME: bool(virtual_home_gids),
+                CONF_ADD_CIRCUITS_TO_ENERGY: user_input.get(
+                    CONF_ADD_CIRCUITS_TO_ENERGY, False
+                ),
                 CUSTOMER_GID: info[CUSTOMER_GID],
                 CONFIG_TITLE: info[CONFIG_TITLE],
             }
@@ -344,8 +372,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Length(min=1),
             ),
             vol.Optional(
-                CONF_VIRTUAL_HOME,
-                default=current_config.data.get(CONF_VIRTUAL_HOME, False),
+                CONF_VIRTUAL_HOME_GIDS,
+                default=current_config.data.get(
+                    CONF_VIRTUAL_HOME_GIDS,
+                    current_config.data.get(CONF_MONITOR_GIDS, [])
+                    if current_config.data.get(CONF_VIRTUAL_HOME, False)
+                    else [],
+                ),
+            ): cv.multi_select(self._pending_monitor_options),
+            vol.Optional(
+                CONF_ADD_CIRCUITS_TO_ENERGY,
+                default=False,
             ): cv.boolean,
         }
 

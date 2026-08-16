@@ -121,8 +121,6 @@ async def async_setup_energy_dashboard_service(hass: HomeAssistant) -> None:
     """Register the device-targeted Energy Dashboard action."""
     if hass.services.has_service(DOMAIN, SERVICE_ADD_TO_ENERGY_DASHBOARD):
         return
-    update_lock = hass.data[DOMAIN].setdefault(DATA_ENERGY_UPDATE_LOCK, asyncio.Lock())
-
     async def async_add_to_energy_dashboard(
         call: ServiceCall,
     ) -> dict[str, int] | None:
@@ -143,44 +141,9 @@ async def async_setup_energy_dashboard_service(hass: HomeAssistant) -> None:
                 "The selected monitor is not part of this config entry"
             )
 
-        selected_gids = descendant_gids(devices, root_gid)
-        entries_by_unique_id = {
-            entry.unique_id: entry
-            for entry in entity_registry.entities.values()
-            if entry.config_entry_id == entry_id and entry.platform == DOMAIN
-        }
-        statistic_ids: list[str] = []
-        skipped_aggregate = skipped_incompatible = 0
-        for gid in sorted(selected_gids):
-            for channel in devices[gid].channels:
-                if not is_consumptive_circuit(channel):
-                    skipped_aggregate += 1
-                    continue
-                unique_id = circuit_energy_unique_id(gid, channel.channel_num)
-                if (
-                    (entry := entries_by_unique_id.get(unique_id)) is None
-                    or not _is_energy_state_compatible(hass, entry.entity_id)
-                ):
-                    skipped_incompatible += 1
-                    continue
-                statistic_ids.append(entry.entity_id)
-
-        async with update_lock:
-            manager = await async_get_manager(hass)
-            preferences = manager.data or manager.default_preferences()
-            merged, added, already_configured = merge_device_consumption(
-                preferences.get("device_consumption", []), statistic_ids
-            )
-            if added:
-                # EnergyManager applies a partial update, preserving all other prefs.
-                await manager.async_update({"device_consumption": merged})
-
-        result = {
-            "added": added,
-            "already_configured": already_configured,
-            "skipped_aggregate": skipped_aggregate,
-            "skipped_incompatible": skipped_incompatible,
-        }
+        result = await async_add_circuits_to_energy_dashboard(
+            hass, entry_id, descendant_gids(devices, root_gid)
+        )
         _LOGGER.info(
             "Energy Dashboard update for %s: %s",
             device.name_by_user or device.name or root_gid,
@@ -195,3 +158,53 @@ async def async_setup_energy_dashboard_service(hass: HomeAssistant) -> None:
         schema=vol.Schema({vol.Required(ATTR_DEVICE_ID): cv.string}),
         supports_response=SupportsResponse.OPTIONAL,
     )
+
+
+async def async_add_circuits_to_energy_dashboard(
+    hass: HomeAssistant, entry_id: str, selected_gids: Iterable[int]
+) -> dict[str, int]:
+    """Add eligible circuits for selected monitor trees to Energy preferences."""
+    devices = hass.data[DOMAIN][entry_id]["device_information"]
+    entity_registry = er.async_get(hass)
+    entries_by_unique_id = {
+            entry.unique_id: entry
+            for entry in entity_registry.entities.values()
+            if entry.config_entry_id == entry_id and entry.platform == DOMAIN
+    }
+    statistic_ids: list[str] = []
+    skipped_aggregate = skipped_incompatible = 0
+    for gid in sorted(set(selected_gids)):
+        if gid not in devices:
+            continue
+        for channel in devices[gid].channels:
+            if not is_consumptive_circuit(channel):
+                skipped_aggregate += 1
+                continue
+            unique_id = circuit_energy_unique_id(gid, channel.channel_num)
+            if (
+                (entry := entries_by_unique_id.get(unique_id)) is None
+                or not _is_energy_state_compatible(hass, entry.entity_id)
+            ):
+                skipped_incompatible += 1
+                continue
+            statistic_ids.append(entry.entity_id)
+
+    update_lock = hass.data[DOMAIN].setdefault(
+        DATA_ENERGY_UPDATE_LOCK, asyncio.Lock()
+    )
+    async with update_lock:
+        manager = await async_get_manager(hass)
+        preferences = manager.data or manager.default_preferences()
+        merged, added, already_configured = merge_device_consumption(
+            preferences.get("device_consumption", []), statistic_ids
+        )
+        if added:
+            # EnergyManager applies a partial update, preserving all other prefs.
+            await manager.async_update({"device_consumption": merged})
+
+    return {
+        "added": added,
+        "already_configured": already_configured,
+        "skipped_aggregate": skipped_aggregate,
+        "skipped_incompatible": skipped_incompatible,
+    }

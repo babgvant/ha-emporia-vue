@@ -30,20 +30,23 @@
       },
       "select_monitors": {
         "title": "Select monitors",
-        "description": "Choose which Emporia Vue monitors should be available in this Home Assistant installation. Selecting a monitor automatically includes its nested monitors.",
+        "description": "Choose which monitors are available in Home Assistant, then separately choose which included monitors contribute to Virtual Home. Exclude subpanels from Virtual Home to avoid double counting. Selecting a monitor automatically includes its nested monitors.",
         "data": {
           "monitor_gids": "Monitors to include",
-          "virtual_home": "Create a virtual home total from selected monitors"
+          "virtual_home_gids": "Monitors to include in Virtual Home",
+          "add_circuits_to_energy_dashboard": "Add eligible circuits to Energy Dashboard after setup"
         }
       },
       "reconfigure": {
+        "description": "Monitors can be available in Home Assistant without contributing to Virtual Home. Select only non-overlapping monitor totals for Virtual Home to avoid double counting.",
         "data": {
           "enable_1m": "[%key:component::emporia_vue::config::step::email_password::data::enable_1m%]",
           "enable_1d": "[%key:component::emporia_vue::config::step::email_password::data::enable_1d%]",
           "enable_1mon": "[%key:component::emporia_vue::config::step::email_password::data::enable_1mon%]",
           "solar_invert": "[%key:component::emporia_vue::config::step::email_password::data::solar_invert%]",
           "monitor_gids": "Monitors to include",
-          "virtual_home": "Create a virtual home total from selected monitors"
+          "virtual_home_gids": "Monitors to include in Virtual Home",
+          "add_circuits_to_energy_dashboard": "Add eligible circuits to Energy Dashboard when saved"
         }
       },
       "reauth_confirm": {
@@ -90,6 +93,7 @@
           "name": "Charging current",
           "description": "The desired charging current in amps"
         }
+      }
     },
     "add_to_energy_dashboard": {
       "name": "Add circuits to Energy Dashboard",
@@ -100,7 +104,6 @@
           "description": "The monitor whose consumptive branch circuits should be added"
         }
       }
-    }
     }
   }
 }
