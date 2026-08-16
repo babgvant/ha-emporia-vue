@@ -19,6 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .hierarchy import channel_name, device_identifier
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -99,6 +100,7 @@ class CurrentVuePowerSensor(CoordinatorEntity, SensorEntity):  # type: ignore
             )
         self._channel: VueDeviceChannel = final_channel
         self._iskwh = self.scale_is_energy()
+        prefix = channel_name(self._device, self._channel)
 
         self._attr_has_entity_name = True
         if self._iskwh:
@@ -106,39 +108,27 @@ class CurrentVuePowerSensor(CoordinatorEntity, SensorEntity):  # type: ignore
             self._attr_device_class = SensorDeviceClass.ENERGY
             self._attr_state_class = SensorStateClass.TOTAL
             self._attr_suggested_display_precision = 3
-            self._attr_name = f"Energy {self.scale_readable()}"
+            measurement = f"Energy {self.scale_readable()}"
         else:
             self._attr_native_unit_of_measurement = UnitOfPower.WATT
             self._attr_device_class = SensorDeviceClass.POWER
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_suggested_display_precision = 1
-            self._attr_name = f"Power {self.scale_readable()}"
+            measurement = "Power"
+        self._attr_name = f"{prefix} {measurement}" if prefix else measurement
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return the device info."""
-        device_name = self._channel.name
-        if not device_name:
-            # An unnamed *numbered* channel is a CT that has not been configured
-            # in the Emporia app. Falling back to the monitor's name gives every
-            # such channel an identical name, so a Vue with spare channels shows
-            # up as a pile of same-named devices (#379, #328).
-            # Aggregate channels ("1,2,3", MainsFromGrid, Balance, ...) legitimately
-            # represent the monitor itself, so those keep the monitor's name.
-            if self._channel.channel_num.isdigit():
-                device_name = (
-                    f"{self._device.device_name} Circuit {self._channel.channel_num}"
-                )
-            else:
-                device_name = self._device.device_name
         return DeviceInfo(
-            identifiers={
-                (DOMAIN, f"{self._device.device_gid}-{self._channel.channel_num}")
-            },
-            name=device_name,
+            identifiers={(DOMAIN, device_identifier(self._device))},
+            name=self._device.display_name or self._device.device_name,
             model=self._device.model,
             sw_version=self._device.firmware,
             manufacturer="Emporia",
+            via_device=(DOMAIN, str(self._device.parent_device_gid))
+            if self._device.parent_device_gid
+            else None,
         )
 
     @property
@@ -282,10 +272,13 @@ class EmporiaChargerStatusSensor(CoordinatorEntity, SensorEntity):  # type: igno
     def device_info(self) -> DeviceInfo:
         """Return the device information."""
         return DeviceInfo(
-            identifiers={(DOMAIN, f"{self._device_gid}-1,2,3")},
-            name=self._device.device_name,
+            identifiers={(DOMAIN, device_identifier(self._device))},
+            name=self._device.display_name or self._device.device_name,
             model=self._device.model,
             sw_version=self._device.firmware,
             manufacturer="Emporia",
+            via_device=(DOMAIN, str(self._device.parent_device_gid))
+            if self._device.parent_device_gid
+            else None,
         )
 

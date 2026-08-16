@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import (
 
 from .charger_entity import EmporiaChargerEntity
 from .const import DOMAIN, VUE_DATA
+from .hierarchy import device_identifier
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -101,11 +102,14 @@ class EmporiaOutletSwitch(CoordinatorEntity, SwitchEntity):  # type: ignore
     def device_info(self) -> DeviceInfo:
         """Return the device information."""
         return DeviceInfo(
-            identifiers={(DOMAIN, f"{self._device_gid}-1,2,3")},
-            name=self._device.device_name,
+            identifiers={(DOMAIN, device_identifier(self._device))},
+            name=self._device.display_name or self._device.device_name,
             model=self._device.model,
             sw_version=self._device.firmware,
             manufacturer="Emporia",
+            via_device=(DOMAIN, str(self._device.parent_device_gid))
+            if self._device.parent_device_gid
+            else None,
         )
 
     @property

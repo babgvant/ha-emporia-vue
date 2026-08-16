@@ -20,6 +20,7 @@ from .const import (
     AUTH_METHOD_TOKENS,
     CONF_ACCESS_TOKEN,
     CONF_ID_TOKEN,
+    CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
     CONFIG_FLOW_SCHEMA,
     CONFIG_TITLE,
@@ -31,6 +32,7 @@ from .const import (
     SOLAR_INVERT,
     TOKEN_CONFIG_FLOW_SCHEMA,
 )
+from .hierarchy import merge_devices, monitor_options
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 SENSITIVE_CONFIG_KEYS = {
@@ -84,12 +86,14 @@ class VueHub:
         )
 
 
-async def validate_input(data: dict | Mapping[str, Any]) -> dict[str, Any]:
+async def validate_input(
+    data: dict | Mapping[str, Any], hub: VueHub | None = None
+) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
     Data has the keys from DATA_SCHEMA with values provided by the user.
     """
-    hub = VueHub()
+    hub = hub or VueHub()
     if not await hub.authenticate(data):
         raise InvalidAuth
 
@@ -143,6 +147,50 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
+    def __init__(self) -> None:
+        """Initialize pending account details."""
+        super().__init__()
+        self._pending_entry_data: dict[str, Any] | None = None
+        self._pending_monitor_options: dict[str, str] = {}
+
+    async def _authenticate_and_get_monitors(
+        self, user_input: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Authenticate once and retain monitor choices for the next step."""
+        hub = VueHub()
+        info = await validate_input(user_input, hub)
+        devices = await asyncio.get_running_loop().run_in_executor(
+            None, hub.vue.get_devices
+        )
+        self._pending_entry_data = info
+        self._pending_monitor_options = monitor_options(merge_devices(devices))
+        return info
+
+    async def async_step_select_monitors(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Select the top-level monitor trees to import."""
+        if self._pending_entry_data is None:
+            return self.async_abort(reason="unknown")
+        if user_input is not None:
+            data = dict(self._pending_entry_data)
+            data[CONF_MONITOR_GIDS] = list(user_input[CONF_MONITOR_GIDS])
+            return self.async_create_entry(title=data[CONFIG_TITLE], data=data)
+        return self.async_show_form(
+            step_id="select_monitors",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MONITOR_GIDS,
+                        default=list(self._pending_monitor_options),
+                    ): vol.All(
+                        cv.multi_select(self._pending_monitor_options),
+                        vol.Length(min=1),
+                    )
+                }
+            ),
+        )
+
     async def async_step_user(self, user_input=None) -> config_entries.ConfigFlowResult:
         """Handle the initial step."""
         if user_input is not None:
@@ -164,14 +212,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 user_input[AUTH_METHOD] = AUTH_METHOD_EMAIL_PASSWORD
-                info = await validate_input(user_input)
+                info = await self._authenticate_and_get_monitors(user_input)
                 # prevent setting up the same account twice
                 await self.async_set_unique_id(info[CUSTOMER_GID])
                 self._abort_if_unique_id_configured()
 
-                return self.async_create_entry(
-                    title=info[CONFIG_TITLE], data=info
-                )
+                if self.context.get("source") == config_entries.SOURCE_IMPORT:
+                    return self.async_create_entry(
+                        title=info[CONFIG_TITLE], data=info
+                    )
+                return await self.async_step_select_monitors()
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
@@ -192,14 +242,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 user_input[AUTH_METHOD] = AUTH_METHOD_TOKENS
-                info = await validate_input(user_input)
+                info = await self._authenticate_and_get_monitors(user_input)
                 # prevent setting up the same account twice
                 await self.async_set_unique_id(info[CUSTOMER_GID])
                 self._abort_if_unique_id_configured()
 
-                return self.async_create_entry(
-                    title=info[CONFIG_TITLE], data=info
-                )
+                return await self.async_step_select_monitors()
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
@@ -223,6 +271,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """Handle the reconfiguration step."""
         current_config = self._get_reconfigure_entry()
+        if not self._pending_monitor_options:
+            try:
+                hub = VueHub()
+                if not await hub.authenticate(current_config.data):
+                    raise InvalidAuth
+                devices = await asyncio.get_running_loop().run_in_executor(
+                    None, hub.vue.get_devices
+                )
+                self._pending_monitor_options = monitor_options(merge_devices(devices))
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unable to retrieve monitors during reconfiguration")
+                return self.async_abort(reason="cannot_connect")
         if user_input is not None:
             _LOGGER.debug("User input on reconfigure was the following: %s", user_input)
             _LOGGER.debug(
@@ -244,6 +304,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ENABLE_1D: user_input[ENABLE_1D],
                 ENABLE_1MON: user_input[ENABLE_1MON],
                 SOLAR_INVERT: user_input[SOLAR_INVERT],
+                CONF_MONITOR_GIDS: list(user_input[CONF_MONITOR_GIDS]),
                 CUSTOMER_GID: info[CUSTOMER_GID],
                 CONFIG_TITLE: info[CONFIG_TITLE],
             }
@@ -269,6 +330,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 SOLAR_INVERT,
                 default=current_config.data.get(SOLAR_INVERT, True),
             ): cv.boolean,
+            vol.Required(
+                CONF_MONITOR_GIDS,
+                default=current_config.data.get(
+                    CONF_MONITOR_GIDS, list(self._pending_monitor_options)
+                ),
+            ): vol.All(
+                cv.multi_select(self._pending_monitor_options),
+                vol.Length(min=1),
+            ),
         }
 
         return self.async_show_form(

@@ -20,6 +20,7 @@ ENABLE_1MON = "enable_1mon"
 SOLAR_INVERT = "solar_invert"
 CUSTOMER_GID = "customer_gid"
 CONFIG_TITLE = "title"
+CONF_MONITOR_GIDS = "monitor_gids"
 
 AUTH_METHOD_SCHEMA = vol.Schema(
     {
