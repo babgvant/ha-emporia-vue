@@ -23,7 +23,7 @@ CONFIG_TITLE = "title"
 CONF_MONITOR_GIDS = "monitor_gids"
 CONF_VIRTUAL_HOME = "virtual_home"
 CONF_VIRTUAL_HOME_GIDS = "virtual_home_gids"
-CONF_ADD_CIRCUITS_TO_ENERGY = "add_circuits_to_energy_dashboard"
+CONF_ENERGY_MONITOR_GIDS = "energy_monitor_gids"
 
 AUTH_METHOD_SCHEMA = vol.Schema(
     {

@@ -54,6 +54,11 @@ nested monitors, to **Energy > Individual devices**. It skips panel totals,
 balance/grid/solar channels, and circuits that are already configured. Existing
 Energy Dashboard sources and settings are preserved.
 
+Alternatively, open the integration's reconfigure page and select each physical
+monitor under **Monitors whose circuits are added to Energy Dashboard**. This
+explicit selection includes combined subpanels without relying on hierarchy
+discovery and is reapplied safely whenever the integration loads.
+
 Enable the integration's **Energy Today Sensor** option before using the action.
 When the action is called with response data enabled, its result reports added,
 already configured, aggregate-skipped, and incompatible circuit counts.

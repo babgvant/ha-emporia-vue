@@ -42,7 +42,7 @@ from .const import (
     AUTH_METHOD_EMAIL_PASSWORD,
     AUTH_METHOD_TOKENS,
     CONF_ACCESS_TOKEN,
-    CONF_ADD_CIRCUITS_TO_ENERGY,
+    CONF_ENERGY_MONITOR_GIDS,
     CONF_ID_TOKEN,
     CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
@@ -225,6 +225,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 exc_info=True,
             )
         included_gids = selected_device_gids(all_devices, configured_roots)
+        energy_monitor_gids = {
+            int(gid)
+            for gid in entry_data.get(CONF_ENERGY_MONITOR_GIDS, [])
+            if int(gid) in all_devices
+        }
+        included_gids.update(energy_monitor_gids)
         _LOGGER.info(
             "Configured Emporia roots %s expanded to monitor GIDs %s",
             configured_roots,
@@ -550,19 +556,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.warning("Error setting up platforms: %s", err)
         raise ConfigEntryNotReady(f"Error setting up platforms: {err}") from err
 
-    if entry.data.get(CONF_ADD_CIRCUITS_TO_ENERGY, False):
+    if energy_monitor_gids:
         try:
             result = await async_add_circuits_to_energy_dashboard(
-                hass, entry.entry_id, runtime.device_information
+                hass, entry.entry_id, energy_monitor_gids
             )
             _LOGGER.info("Automatic Energy Dashboard update: %s", result)
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unable to add Emporia circuits to Energy Dashboard")
-        finally:
-            hass.config_entries.async_update_entry(
-                entry,
-                data={**entry.data, CONF_ADD_CIRCUITS_TO_ENERGY: False},
-            )
 
     return True
 

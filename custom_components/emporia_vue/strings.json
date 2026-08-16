@@ -30,15 +30,15 @@
       },
       "select_monitors": {
         "title": "Select monitors",
-        "description": "Choose which monitors are available in Home Assistant, then separately choose which included monitors contribute to Virtual Home. Exclude subpanels from Virtual Home to avoid double counting. Selecting a monitor automatically includes its nested monitors.",
+        "description": "Choose which monitors are available in Home Assistant, which contribute to Virtual Home, and exactly which monitors contribute circuits to the Energy Dashboard. Exclude subpanels from Virtual Home to avoid double counting.",
         "data": {
           "monitor_gids": "Monitors to include",
           "virtual_home_gids": "Monitors to include in Virtual Home",
-          "add_circuits_to_energy_dashboard": "Add eligible circuits to Energy Dashboard after setup"
+          "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
         }
       },
       "reconfigure": {
-        "description": "Monitors can be available in Home Assistant without contributing to Virtual Home. Select only non-overlapping monitor totals for Virtual Home to avoid double counting.",
+        "description": "Monitor visibility, Virtual Home totals, and Energy Dashboard circuits are selected independently. Select subpanels directly for Energy, but only non-overlapping totals for Virtual Home.",
         "data": {
           "enable_1m": "[%key:component::emporia_vue::config::step::email_password::data::enable_1m%]",
           "enable_1d": "[%key:component::emporia_vue::config::step::email_password::data::enable_1d%]",
@@ -46,7 +46,7 @@
           "solar_invert": "[%key:component::emporia_vue::config::step::email_password::data::solar_invert%]",
           "monitor_gids": "Monitors to include",
           "virtual_home_gids": "Monitors to include in Virtual Home",
-          "add_circuits_to_energy_dashboard": "Add eligible circuits to Energy Dashboard when saved"
+          "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
         }
       },
       "reauth_confirm": {

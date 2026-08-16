@@ -21,7 +21,7 @@ from .const import (
     AUTH_METHOD_SCHEMA,
     AUTH_METHOD_TOKENS,
     CONF_ACCESS_TOKEN,
-    CONF_ADD_CIRCUITS_TO_ENERGY,
+    CONF_ENERGY_MONITOR_GIDS,
     CONF_ID_TOKEN,
     CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
@@ -37,7 +37,12 @@ from .const import (
     SOLAR_INVERT,
     TOKEN_CONFIG_FLOW_SCHEMA,
 )
-from .hierarchy import apply_usage_hierarchy, merge_devices, monitor_options
+from .hierarchy import (
+    all_monitor_options,
+    apply_usage_hierarchy,
+    merge_devices,
+    monitor_options,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 SENSITIVE_CONFIG_KEYS = {
@@ -157,6 +162,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         super().__init__()
         self._pending_entry_data: dict[str, Any] | None = None
         self._pending_monitor_options: dict[str, str] = {}
+        self._pending_all_monitor_options: dict[str, str] = {}
 
     async def _authenticate_and_get_monitors(
         self, user_input: dict[str, Any]
@@ -168,6 +174,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             None, hub.vue.get_devices
         )
         merged_devices = merge_devices(devices)
+        self._pending_all_monitor_options = all_monitor_options(merged_devices)
         try:
             usage = await asyncio.get_running_loop().run_in_executor(
                 None,
@@ -203,8 +210,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data[CONF_MONITOR_GIDS] = monitor_gids
             data[CONF_VIRTUAL_HOME_GIDS] = virtual_home_gids
             data[CONF_VIRTUAL_HOME] = bool(virtual_home_gids)
-            data[CONF_ADD_CIRCUITS_TO_ENERGY] = user_input.get(
-                CONF_ADD_CIRCUITS_TO_ENERGY, False
+            data[CONF_ENERGY_MONITOR_GIDS] = list(
+                user_input.get(CONF_ENERGY_MONITOR_GIDS, [])
             )
             return self.async_create_entry(title=data[CONFIG_TITLE], data=data)
         return self.async_show_form(
@@ -223,8 +230,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         default=[],
                     ): cv.multi_select(self._pending_monitor_options),
                     vol.Optional(
-                        CONF_ADD_CIRCUITS_TO_ENERGY, default=False
-                    ): cv.boolean,
+                        CONF_ENERGY_MONITOR_GIDS, default=[]
+                    ): cv.multi_select(self._pending_all_monitor_options),
                 }
             ),
         )
@@ -318,6 +325,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     None, hub.vue.get_devices
                 )
                 merged_devices = merge_devices(devices)
+                self._pending_all_monitor_options = all_monitor_options(
+                    merged_devices
+                )
                 try:
                     usage = await asyncio.get_running_loop().run_in_executor(
                         None,
@@ -366,8 +376,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_MONITOR_GIDS: monitor_gids,
                 CONF_VIRTUAL_HOME_GIDS: virtual_home_gids,
                 CONF_VIRTUAL_HOME: bool(virtual_home_gids),
-                CONF_ADD_CIRCUITS_TO_ENERGY: user_input.get(
-                    CONF_ADD_CIRCUITS_TO_ENERGY, False
+                CONF_ENERGY_MONITOR_GIDS: list(
+                    user_input.get(CONF_ENERGY_MONITOR_GIDS, [])
                 ),
                 CUSTOMER_GID: info[CUSTOMER_GID],
                 CONFIG_TITLE: info[CONFIG_TITLE],
@@ -413,9 +423,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
             ): cv.multi_select(self._pending_monitor_options),
             vol.Optional(
-                CONF_ADD_CIRCUITS_TO_ENERGY,
-                default=False,
-            ): cv.boolean,
+                CONF_ENERGY_MONITOR_GIDS,
+                default=current_config.data.get(CONF_ENERGY_MONITOR_GIDS, []),
+            ): cv.multi_select(self._pending_all_monitor_options),
         }
 
         return self.async_show_form(

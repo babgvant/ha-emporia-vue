@@ -81,6 +81,27 @@ def monitor_options(devices: dict[int, Any]) -> dict[str, str]:
     return options
 
 
+def all_monitor_options(devices: dict[int, Any]) -> dict[str, str]:
+    """Build stable-GID options for every monitor, including subpanels."""
+    options: dict[str, str] = {}
+    for device in sorted(
+        devices.values(),
+        key=lambda item: (
+            (item.display_name or item.device_name or "").casefold(),
+            item.device_gid,
+        ),
+    ):
+        name = (
+            device.display_name
+            or device.device_name
+            or f"Emporia monitor {device.device_gid}"
+        )
+        if name in options.values():
+            name = f"{name} ({device.device_gid})"
+        options[str(device.device_gid)] = name
+    return options
+
+
 def device_identifier(device: Any) -> str:
     """Return the one HA device-registry identifier for physical hardware."""
     return str(device.device_gid)

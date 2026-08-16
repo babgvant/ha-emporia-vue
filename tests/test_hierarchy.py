@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from custom_components.emporia_vue.hierarchy import (
     aggregate_root_gids,
+    all_monitor_options,
     apply_usage_hierarchy,
     channel_name,
     device_identifier,
@@ -142,6 +143,16 @@ def test_only_top_level_monitors_are_options() -> None:
     """Children are included implicitly and are not separately selectable."""
     assert monitor_options(device_map()) == {
         "1": "Monitor A",
+        "3": "Monitor B",
+        "4": "Monitor C",
+    }
+
+
+def test_energy_options_include_combined_subpanels() -> None:
+    """Energy selection exposes every monitor without hierarchy traversal."""
+    assert all_monitor_options(device_map()) == {
+        "1": "Monitor A",
+        "2": "Monitor A2",
         "3": "Monitor B",
         "4": "Monitor C",
     }
