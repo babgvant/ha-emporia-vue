@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from custom_components.emporia_vue.hierarchy import (
     aggregate_root_gids,
+    apply_usage_hierarchy,
     channel_name,
     device_identifier,
     merge_devices,
@@ -27,6 +28,16 @@ class Device:
     channels: list[Channel] = field(default_factory=list)
 
 
+@dataclass
+class UsageChannel:
+    nested_devices: dict[int, "UsageDevice"] = field(default_factory=dict)
+
+
+@dataclass
+class UsageDevice:
+    channels: dict[str, UsageChannel] = field(default_factory=dict)
+
+
 def device_map() -> dict[int, Device]:
     """Create three roots and one nested monitor."""
     return merge_devices(
@@ -42,6 +53,25 @@ def device_map() -> dict[int, Device]:
 def test_selected_monitor_filters_other_roots_and_includes_descendants() -> None:
     """A selected root includes its nested tree only."""
     assert selected_device_gids(device_map(), ["1"]) == {1, 2}
+
+
+def test_usage_data_supplies_missing_combined_monitor_relationships() -> None:
+    """Nested usage identifies children absent from device metadata."""
+    devices = merge_devices(
+        [Device(1, "Main"), Device(2, "Subpanel"), Device(3, "Other")]
+    )
+    usage = {
+        1: UsageDevice(
+            channels={
+                "1": UsageChannel(nested_devices={2: UsageDevice()})
+            }
+        ),
+        3: UsageDevice(),
+    }
+    apply_usage_hierarchy(devices, usage)
+    assert devices[2].parent_device_gid == 1
+    assert selected_device_gids(devices, ["1"]) == {1, 2}
+    assert monitor_options(devices) == {"1": "Main", "3": "Other"}
 
 
 def test_polling_gids_come_only_from_selected_tree() -> None:

@@ -54,7 +54,7 @@ from .const import (
     SOLAR_INVERT,
     VUE_DATA,
 )
-from .hierarchy import merge_devices, selected_device_gids
+from .hierarchy import apply_usage_hierarchy, merge_devices, selected_device_gids
 from .energy_dashboard import (
     async_add_circuits_to_energy_dashboard,
     async_setup_energy_dashboard_service,
@@ -204,6 +204,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         devices: list[VueDevice] = await loop.run_in_executor(None, vue.get_devices)
         all_devices = merge_devices(devices)
+        try:
+            hierarchy_usage = await loop.run_in_executor(
+                None,
+                vue.get_device_list_usage,
+                [str(gid) for gid in all_devices],
+                datetime.now(UTC),
+                Scale.MINUTE.value,
+            )
+            apply_usage_hierarchy(all_devices, hierarchy_usage)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.warning(
+                "Unable to discover combined monitor hierarchy from usage data",
+                exc_info=True,
+            )
         configured_roots = entry_data.get(CONF_MONITOR_GIDS)
         included_gids = selected_device_gids(all_devices, configured_roots)
         device_information = {

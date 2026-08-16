@@ -18,6 +18,24 @@ def merge_devices(devices: Iterable[Any]) -> dict[int, Any]:
     return merged
 
 
+def apply_usage_hierarchy(
+    devices: dict[int, Any], usage_devices: dict[int, Any]
+) -> dict[int, Any]:
+    """Populate combined-monitor parents from recursive usage data."""
+
+    def walk(current: dict[int, Any], parent_gid: int | None = None) -> None:
+        for gid, usage_device in current.items():
+            gid = int(gid)
+            if parent_gid is not None and gid in devices:
+                devices[gid].parent_device_gid = parent_gid
+            for channel in usage_device.channels.values():
+                if channel.nested_devices:
+                    walk(channel.nested_devices, gid)
+
+    walk(usage_devices)
+    return devices
+
+
 def top_level_devices(devices: dict[int, Any]) -> list[Any]:
     """Return selectable roots; tolerate missing or stale parent references."""
     gids = set(devices)

@@ -2,11 +2,13 @@
 
 import asyncio
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from functools import partial
 import logging
 from typing import Any
 
 from pyemvue import PyEmVue
+from pyemvue.enums import Scale
 import voluptuous as vol
 
 from homeassistant import config_entries, exceptions
@@ -35,7 +37,7 @@ from .const import (
     SOLAR_INVERT,
     TOKEN_CONFIG_FLOW_SCHEMA,
 )
-from .hierarchy import merge_devices, monitor_options
+from .hierarchy import apply_usage_hierarchy, merge_devices, monitor_options
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 SENSITIVE_CONFIG_KEYS = {
@@ -165,8 +167,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         devices = await asyncio.get_running_loop().run_in_executor(
             None, hub.vue.get_devices
         )
+        merged_devices = merge_devices(devices)
+        try:
+            usage = await asyncio.get_running_loop().run_in_executor(
+                None,
+                hub.vue.get_device_list_usage,
+                [str(gid) for gid in merged_devices],
+                datetime.now(UTC),
+                Scale.MINUTE.value,
+            )
+            apply_usage_hierarchy(merged_devices, usage)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.warning(
+                "Unable to discover combined monitor hierarchy during setup",
+                exc_info=True,
+            )
         self._pending_entry_data = info
-        self._pending_monitor_options = monitor_options(merge_devices(devices))
+        self._pending_monitor_options = monitor_options(merged_devices)
         return info
 
     async def async_step_select_monitors(
@@ -300,7 +317,22 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 devices = await asyncio.get_running_loop().run_in_executor(
                     None, hub.vue.get_devices
                 )
-                self._pending_monitor_options = monitor_options(merge_devices(devices))
+                merged_devices = merge_devices(devices)
+                try:
+                    usage = await asyncio.get_running_loop().run_in_executor(
+                        None,
+                        hub.vue.get_device_list_usage,
+                        [str(gid) for gid in merged_devices],
+                        datetime.now(UTC),
+                        Scale.MINUTE.value,
+                    )
+                    apply_usage_hierarchy(merged_devices, usage)
+                except Exception:  # pylint: disable=broad-except
+                    _LOGGER.warning(
+                        "Unable to discover combined monitor hierarchy during reconfiguration",
+                        exc_info=True,
+                    )
+                self._pending_monitor_options = monitor_options(merged_devices)
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unable to retrieve monitors during reconfiguration")
                 return self.async_abort(reason="cannot_connect")
