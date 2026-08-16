@@ -204,11 +204,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         devices: list[VueDevice] = await loop.run_in_executor(None, vue.get_devices)
         all_devices = merge_devices(devices)
+        configured_roots = entry_data.get(CONF_MONITOR_GIDS)
+        hierarchy_query_gids = (
+            [str(gid) for gid in configured_roots]
+            if configured_roots is not None
+            else [str(gid) for gid in all_devices]
+        )
         try:
             hierarchy_usage = await loop.run_in_executor(
                 None,
                 vue.get_device_list_usage,
-                [str(gid) for gid in all_devices],
+                hierarchy_query_gids,
                 datetime.now(UTC),
                 Scale.MINUTE.value,
             )
@@ -218,8 +224,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "Unable to discover combined monitor hierarchy from usage data",
                 exc_info=True,
             )
-        configured_roots = entry_data.get(CONF_MONITOR_GIDS)
         included_gids = selected_device_gids(all_devices, configured_roots)
+        _LOGGER.info(
+            "Configured Emporia roots %s expanded to monitor GIDs %s",
+            configured_roots,
+            sorted(included_gids),
+        )
         device_information = {
             gid: device for gid, device in all_devices.items() if gid in included_gids
         }

@@ -74,6 +74,32 @@ def test_usage_data_supplies_missing_combined_monitor_relationships() -> None:
     assert monitor_options(devices) == {"1": "Main", "3": "Other"}
 
 
+def test_configured_root_expands_usage_discovered_descendants() -> None:
+    """A root-only usage response expands the stored root selection."""
+    devices = merge_devices(
+        [Device(1, "Main"), Device(2, "South"), Device(3, "North")]
+    )
+    usage = {
+        1: UsageDevice(
+            channels={
+                "1": UsageChannel(
+                    nested_devices={
+                        2: UsageDevice(
+                            channels={
+                                "2": UsageChannel(
+                                    nested_devices={3: UsageDevice()}
+                                )
+                            }
+                        )
+                    }
+                )
+            }
+        )
+    }
+    apply_usage_hierarchy(devices, usage)
+    assert selected_device_gids(devices, ["1"]) == {1, 2, 3}
+
+
 def test_polling_gids_come_only_from_selected_tree() -> None:
     """The runtime usage request cannot include excluded root GIDs."""
     devices = device_map()
