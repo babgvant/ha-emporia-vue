@@ -68,6 +68,18 @@ def device_identifier(device: Any) -> str:
     return str(device.device_gid)
 
 
+def aggregate_root_gids(
+    devices: dict[int, Any], selected_roots: Iterable[str]
+) -> list[int]:
+    """Return selected aggregate sources without double-counting descendants."""
+    selected = {int(gid) for gid in selected_roots if int(gid) in devices}
+    return [
+        gid
+        for gid in devices
+        if gid in selected and devices[gid].parent_device_gid not in selected
+    ]
+
+
 def channel_name(device: Any, channel: Any) -> str | None:
     """Return an entity-name prefix for a channel, or None for main usage."""
     number = str(channel.channel_num)

@@ -28,12 +28,14 @@
                     "enable_1m": "Power Minute Average Sensor",
                     "enable_1mon": "Energy This Month Sensor",
                     "solar_invert": "Invert Values for Solar Circuits",
-                    "monitor_gids": "Monitors to include"
+                    "monitor_gids": "Monitors to include",
+                    "virtual_home": "Create a virtual home total from selected monitors"
                 }
             },
             "select_monitors": {
                 "data": {
-                    "monitor_gids": "Monitors to include"
+                    "monitor_gids": "Monitors to include",
+                    "virtual_home": "Create a virtual home total from selected monitors"
                 },
                 "description": "Choose which Emporia Vue monitors should be available in this Home Assistant installation. Selecting a monitor automatically includes its nested monitors.",
                 "title": "Select monitors"

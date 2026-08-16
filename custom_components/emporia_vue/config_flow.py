@@ -22,6 +22,7 @@ from .const import (
     CONF_ID_TOKEN,
     CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
+    CONF_VIRTUAL_HOME,
     CONFIG_FLOW_SCHEMA,
     CONFIG_TITLE,
     CUSTOMER_GID,
@@ -175,6 +176,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             data = dict(self._pending_entry_data)
             data[CONF_MONITOR_GIDS] = list(user_input[CONF_MONITOR_GIDS])
+            data[CONF_VIRTUAL_HOME] = user_input[CONF_VIRTUAL_HOME]
             return self.async_create_entry(title=data[CONFIG_TITLE], data=data)
         return self.async_show_form(
             step_id="select_monitors",
@@ -186,7 +188,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ): vol.All(
                         cv.multi_select(self._pending_monitor_options),
                         vol.Length(min=1),
-                    )
+                    ),
+                    vol.Optional(CONF_VIRTUAL_HOME, default=False): cv.boolean,
                 }
             ),
         )
@@ -305,6 +308,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ENABLE_1MON: user_input[ENABLE_1MON],
                 SOLAR_INVERT: user_input[SOLAR_INVERT],
                 CONF_MONITOR_GIDS: list(user_input[CONF_MONITOR_GIDS]),
+                CONF_VIRTUAL_HOME: user_input[CONF_VIRTUAL_HOME],
                 CUSTOMER_GID: info[CUSTOMER_GID],
                 CONFIG_TITLE: info[CONFIG_TITLE],
             }
@@ -339,6 +343,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 cv.multi_select(self._pending_monitor_options),
                 vol.Length(min=1),
             ),
+            vol.Optional(
+                CONF_VIRTUAL_HOME,
+                default=current_config.data.get(CONF_VIRTUAL_HOME, False),
+            ): cv.boolean,
         }
 
         return self.async_show_form(

@@ -18,8 +18,13 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
-from .hierarchy import channel_name, device_identifier
+from .const import (
+    CONF_MONITOR_GIDS,
+    CONF_VIRTUAL_HOME,
+    CUSTOMER_GID,
+    DOMAIN,
+)
+from .hierarchy import aggregate_root_gids, channel_name, device_identifier
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -37,32 +42,43 @@ async def async_setup_entry(
         "coordinator_day_sensor"
     ]
 
-    _LOGGER.info(hass.data[DOMAIN][config_entry.entry_id])
+    device_information: dict[int, VueDevice] = hass.data[DOMAIN][
+        config_entry.entry_id
+    ]["device_information"]
+    virtual_home = config_entry.data.get(CONF_VIRTUAL_HOME, False)
+    virtual_source_gids = aggregate_root_gids(
+        device_information,
+        config_entry.data.get(CONF_MONITOR_GIDS, []),
+    )
+
+    def entities_for(coordinator) -> list[SensorEntity]:
+        """Build channel sensors and the optional virtual aggregate."""
+        entities: list[SensorEntity] = [
+            CurrentVuePowerSensor(coordinator, identifier)
+            for identifier in coordinator.data
+        ]
+        if virtual_home:
+            entities.append(
+                VirtualHomeSensor(
+                    coordinator,
+                    config_entry.data[CUSTOMER_GID],
+                    virtual_source_gids,
+                )
+            )
+        return entities
 
     if coordinator_1min:
-        async_add_entities(
-            CurrentVuePowerSensor(coordinator_1min, identifier)
-            for _, identifier in enumerate(coordinator_1min.data)
-        )
+        async_add_entities(entities_for(coordinator_1min))
 
     if coordinator_1mon:
-        async_add_entities(
-            CurrentVuePowerSensor(coordinator_1mon, identifier)
-            for _, identifier in enumerate(coordinator_1mon.data)
-        )
+        async_add_entities(entities_for(coordinator_1mon))
 
     if coordinator_day_sensor:
-        async_add_entities(
-            CurrentVuePowerSensor(coordinator_day_sensor, identifier)
-            for _, identifier in enumerate(coordinator_day_sensor.data)
-        )
+        async_add_entities(entities_for(coordinator_day_sensor))
 
     # Add charger status sensors
     coordinator_device_status = hass.data[DOMAIN][config_entry.entry_id][
         "coordinator_device_status"
-    ]
-    device_information: dict[int, VueDevice] = hass.data[DOMAIN][config_entry.entry_id][
-        "device_information"
     ]
     if coordinator_device_status and coordinator_device_status.data:
         async_add_entities(
@@ -70,6 +86,65 @@ async def async_setup_entry(
             for gid in coordinator_device_status.data
             if int(gid) in device_information and device_information[int(gid)].ev_charger
         )
+
+
+class VirtualHomeSensor(CoordinatorEntity, SensorEntity):  # type: ignore
+    """Aggregate the main channels of selected top-level monitors."""
+
+    def __init__(self, coordinator, customer_gid: str, source_gids: list[int]) -> None:
+        """Initialize a stable virtual home aggregate."""
+        super().__init__(coordinator)
+        self._source_gids = source_gids
+        self._scale: str = next(iter(coordinator.data.values()))["scale"]
+        self._attr_has_entity_name = False
+        self._attr_suggested_display_precision = 3
+        if self._scale == Scale.MINUTE.value:
+            self._attr_name = "Emporia Vue Virtual Home Power"
+            self._attr_native_unit_of_measurement = UnitOfPower.WATT
+            self._attr_device_class = SensorDeviceClass.POWER
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+            self._attr_suggested_display_precision = 1
+        else:
+            period = "Today" if self._scale == Scale.DAY.value else "This Month"
+            self._attr_name = f"Emporia Vue Virtual Home Energy {period}"
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_unique_id = (
+            f"sensor.emporia_vue.virtual_home.{self._scale}.{customer_gid}"
+        )
+
+    def _source_data(self) -> list[dict]:
+        """Return available main-channel coordinator records."""
+        return [
+            self.coordinator.data[identifier]
+            for gid in self._source_gids
+            if (identifier := f"{gid}-1,2,3-{self._scale}")
+            in self.coordinator.data
+        ]
+
+    @property
+    def available(self) -> bool:
+        """Return whether at least one aggregate source is available."""
+        return super().available and bool(self._source_data())
+
+    @property
+    def native_value(self) -> float:
+        """Return the sum of the selected monitor mains."""
+        usage = sum(
+            item["usage"] for item in self._source_data() if item["usage"] is not None
+        )
+        if self._scale == Scale.MINUTE.value:
+            return 60 * 1000 * usage
+        return usage
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Use the common source reset for total-state energy statistics."""
+        resets = {
+            item["reset"] for item in self._source_data() if item["reset"] is not None
+        }
+        return resets.pop() if len(resets) == 1 else None
 
 
 class CurrentVuePowerSensor(CoordinatorEntity, SensorEntity):  # type: ignore

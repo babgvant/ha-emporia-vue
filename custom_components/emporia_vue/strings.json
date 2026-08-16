@@ -32,7 +32,8 @@
         "title": "Select monitors",
         "description": "Choose which Emporia Vue monitors should be available in this Home Assistant installation. Selecting a monitor automatically includes its nested monitors.",
         "data": {
-          "monitor_gids": "Monitors to include"
+          "monitor_gids": "Monitors to include",
+          "virtual_home": "Create a virtual home total from selected monitors"
         }
       },
       "reconfigure": {
@@ -41,7 +42,8 @@
           "enable_1d": "[%key:component::emporia_vue::config::step::email_password::data::enable_1d%]",
           "enable_1mon": "[%key:component::emporia_vue::config::step::email_password::data::enable_1mon%]",
           "solar_invert": "[%key:component::emporia_vue::config::step::email_password::data::solar_invert%]",
-          "monitor_gids": "Monitors to include"
+          "monitor_gids": "Monitors to include",
+          "virtual_home": "Create a virtual home total from selected monitors"
         }
       },
       "reauth_confirm": {

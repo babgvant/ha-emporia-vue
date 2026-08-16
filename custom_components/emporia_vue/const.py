@@ -21,6 +21,7 @@ SOLAR_INVERT = "solar_invert"
 CUSTOMER_GID = "customer_gid"
 CONFIG_TITLE = "title"
 CONF_MONITOR_GIDS = "monitor_gids"
+CONF_VIRTUAL_HOME = "virtual_home"
 
 AUTH_METHOD_SCHEMA = vol.Schema(
     {

@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 
 from custom_components.emporia_vue.hierarchy import (
+    aggregate_root_gids,
     channel_name,
     device_identifier,
     merge_devices,
@@ -49,6 +50,19 @@ def test_polling_gids_come_only_from_selected_tree() -> None:
     included = selected_device_gids(devices, ["1"])
     polling_gids = [str(gid) for gid in devices if gid in included]
     assert polling_gids == ["1", "2"]
+
+
+def test_virtual_home_uses_only_selected_roots() -> None:
+    """Nested sub-panels remain visible without being added to the home total."""
+    devices = device_map()
+    assert aggregate_root_gids(devices, ["1", "2", "4"]) == [1, 4]
+
+
+def test_new_selected_root_joins_virtual_home() -> None:
+    """Reconfiguration can add a new root to the stable virtual aggregate."""
+    devices = device_map()
+    assert aggregate_root_gids(devices, ["1"]) == [1]
+    assert aggregate_root_gids(devices, ["1", "3"]) == [1, 3]
 
 
 def test_missing_selection_preserves_all_devices() -> None:
