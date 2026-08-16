@@ -8,6 +8,7 @@ from custom_components.emporia_vue.energy_dashboard import (
     descendant_gids,
     is_consumptive_circuit,
     merge_device_consumption,
+    parse_circuit_energy_unique_id,
     registered_energy_entity_id,
 )
 
@@ -89,6 +90,16 @@ def test_registered_energy_entity_does_not_require_live_state() -> None:
         registered_energy_entity_id(entries, unique_id)
         == "sensor.hvac_energy_today"
     )
+
+
+def test_registered_child_monitor_circuit_id_is_discovered() -> None:
+    """Daily entities retain the child monitor GID in their unique ID."""
+    assert parse_circuit_energy_unique_id(
+        "sensor.emporia_vue.1D.200-7"
+    ) == (200, "7")
+    assert parse_circuit_energy_unique_id(
+        "sensor.emporia_vue.1MON.200-7"
+    ) is None
 
 
 def test_combined_monitor_tree_excludes_unrelated_roots() -> None:

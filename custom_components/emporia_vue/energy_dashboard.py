@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable, Mapping
 import logging
+import re
 from typing import Any
 
 from pyemvue.enums import Scale
@@ -78,6 +79,17 @@ def registered_energy_entity_id(
     ):
         return None
     return entry.entity_id
+
+
+def parse_circuit_energy_unique_id(unique_id: str) -> tuple[int, str] | None:
+    """Parse an actual registered daily circuit unique ID."""
+    match = re.fullmatch(
+        rf"sensor\.emporia_vue\.{re.escape(Scale.DAY.value)}\.(\d+)-(.+)",
+        unique_id,
+    )
+    if match is None:
+        return None
+    return int(match.group(1)), match.group(2)
 
 
 def merge_device_consumption(
@@ -159,29 +171,42 @@ async def async_add_circuits_to_energy_dashboard(
     """Add eligible circuits for selected monitor trees to Energy preferences."""
     devices = hass.data[DOMAIN][entry_id]["device_information"]
     entity_registry = er.async_get(hass)
-    entries_by_unique_id = {
-        entry.unique_id: entry
+    registered_entries = [
+        entry
         for entry in entity_registry.entities.values()
         if entry.config_entry_id == entry_id and entry.platform == DOMAIN
+    ]
+    selected_gids = set(selected_gids)
+    selected_channel_gids = {
+        int(channel.device_gid)
+        for gid in selected_gids
+        if gid in devices
+        for channel in devices[gid].channels
+    }
+    allowed_entity_gids = selected_gids | selected_channel_gids
+    channel_lookup = {
+        (int(channel.device_gid), str(channel.channel_num)): channel
+        for device in devices.values()
+        for channel in device.channels
     }
     statistic_ids: list[str] = []
     skipped_aggregate = skipped_incompatible = 0
-    for gid in sorted(set(selected_gids)):
-        if gid not in devices:
+    registered_daily_entities = 0
+    for entry in registered_entries:
+        if (parsed := parse_circuit_energy_unique_id(entry.unique_id)) is None:
             continue
-        for channel in devices[gid].channels:
-            if not is_consumptive_circuit(channel):
-                skipped_aggregate += 1
-                continue
-            unique_id = circuit_energy_unique_id(gid, channel.channel_num)
-            if (
-                entity_id := registered_energy_entity_id(
-                    entries_by_unique_id, unique_id
-                )
-            ) is None:
-                skipped_incompatible += 1
-                continue
-            statistic_ids.append(entity_id)
+        registered_daily_entities += 1
+        gid, channel_num = parsed
+        if gid not in allowed_entity_gids:
+            continue
+        channel = channel_lookup.get((gid, channel_num))
+        if channel is None or entry.disabled_by is not None:
+            skipped_incompatible += 1
+            continue
+        if not is_consumptive_circuit(channel):
+            skipped_aggregate += 1
+            continue
+        statistic_ids.append(entry.entity_id)
 
     update_lock = hass.data[DOMAIN].setdefault(
         DATA_ENERGY_UPDATE_LOCK, asyncio.Lock()
@@ -201,4 +226,6 @@ async def async_add_circuits_to_energy_dashboard(
         "already_configured": already_configured,
         "skipped_aggregate": skipped_aggregate,
         "skipped_incompatible": skipped_incompatible,
+        "selected_monitors": len(selected_gids),
+        "registered_daily_entities": registered_daily_entities,
     }
