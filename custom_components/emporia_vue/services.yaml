@@ -19,3 +19,15 @@ set_charger_current:
         number:
           min: 6
           max: 48
+
+add_to_energy_dashboard:
+  name: Add circuits to Energy Dashboard
+  description: Adds all eligible branch circuits from an Emporia Vue monitor and its nested monitors to Individual devices in the Energy Dashboard.
+  fields:
+    device_id:
+      name: Emporia Vue monitor
+      description: The monitor whose consumptive branch circuits should be added.
+      required: true
+      selector:
+        device:
+          integration: emporia_vue

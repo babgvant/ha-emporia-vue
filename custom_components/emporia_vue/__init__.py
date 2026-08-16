@@ -54,6 +54,7 @@ from .const import (
     VUE_DATA,
 )
 from .hierarchy import merge_devices, selected_device_gids
+from .energy_dashboard import async_setup_energy_dashboard_service
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -95,6 +96,7 @@ def redact_config_data(data: Mapping[str, Any]) -> dict[str, Any]:
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Emporia Vue component."""
     hass.data.setdefault(DOMAIN, {})
+    await async_setup_energy_dashboard_service(hass)
     conf = config.get(DOMAIN)
     if not conf:
         return True

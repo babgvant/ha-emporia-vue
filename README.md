@@ -45,6 +45,19 @@ Configuration is done directly in the Home Assistant UI, no manual config file e
 5. In the UI that opens, enter the email and password used for the Emporia App. If your account uses Google/Apple, see the [Google/Apple Accounts](#googleapple-accounts) section below.
 6. Done! You should now have a sensor for each "channel".
 
+### Add circuits to the Energy Dashboard
+
+In **Developer Tools > Actions**, run
+`emporia_vue.add_to_energy_dashboard` and select an Emporia Vue monitor. The
+action adds the monitor's eligible branch circuits, including circuits on its
+nested monitors, to **Energy > Individual devices**. It skips panel totals,
+balance/grid/solar channels, and circuits that are already configured. Existing
+Energy Dashboard sources and settings are preserved.
+
+Enable the integration's **Energy Today Sensor** option before using the action.
+When the action is called with response data enabled, its result reports added,
+already configured, aggregate-skipped, and incompatible circuit counts.
+
 ### Google/Apple Accounts
 
 If your Emporia account was created via Sign in with Google or Apple, the easiest solution is to **set an Emporia password** using the create account flow on the Emporia website or app using the same email address as you'd use with Google/Apple. Once set, you can log in using the standard email and password method above.

@@ -90,7 +90,17 @@
           "name": "Charging current",
           "description": "The desired charging current in amps"
         }
+    },
+    "add_to_energy_dashboard": {
+      "name": "Add circuits to Energy Dashboard",
+      "description": "Adds eligible branch circuits from a Vue monitor and its nested monitors to Individual devices in the Energy Dashboard.",
+      "fields": {
+        "device_id": {
+          "name": "Emporia Vue monitor",
+          "description": "The monitor whose consumptive branch circuits should be added"
+        }
       }
+    }
     }
   }
 }
