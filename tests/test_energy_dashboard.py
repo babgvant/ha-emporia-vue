@@ -65,7 +65,7 @@ def test_unrelated_energy_configuration_is_not_part_of_partial_update() -> None:
 
 
 def test_power_and_aggregate_channels_are_ignored_by_metadata() -> None:
-    assert circuit_energy_unique_id(1, "4") == "sensor.emporia_vue.day.1-4"
+    assert circuit_energy_unique_id(1, "4") == "sensor.emporia_vue.1D.1-4"
     assert circuit_energy_unique_id(1, "4") != "sensor.emporia_vue.instant.1-4"
     assert is_consumptive_circuit(Channel("4"))
     assert not is_consumptive_circuit(Channel("1,2,3"))

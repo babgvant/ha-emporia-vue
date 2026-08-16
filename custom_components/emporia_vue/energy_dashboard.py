@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping
 import logging
 from typing import Any
 
+from pyemvue.enums import Scale
 import voluptuous as vol
 
 from homeassistant.components.energy.data import async_get_manager
@@ -71,7 +72,10 @@ def descendant_gids(devices: Mapping[int, Any], root_gid: int) -> set[int]:
 
 def circuit_energy_unique_id(device_gid: int, channel_num: str) -> str:
     """Return the stable daily cumulative-energy entity unique ID."""
-    return f"sensor.emporia_vue.day.{device_gid}-{channel_num}"
+    return (
+        f"sensor.emporia_vue.{Scale.DAY.value}."
+        f"{device_gid}-{channel_num}"
+    )
 
 
 def merge_device_consumption(
