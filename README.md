@@ -19,7 +19,7 @@ Setting up a custom repository is done by:
 1. Go into HACS from the side bar.
 2. Click into Integrations.
 3. Click the 3-dot menu in the top right and select `Custom repositories`
-4. In the UI that opens, copy and paste the [url for this github repo](https://github.com/magico13/ha-emporia-vue) into the `Add custom repository URL` field.
+4. In the UI that opens, copy and paste the [URL for this GitHub repository](https://github.com/babgvant/ha-emporia-vue) into the `Add custom repository URL` field.
 5. Set the category to `Integration`.
 6. Click the `Add` button.
 7. Select Emporia Vue from the list and press the download button.
