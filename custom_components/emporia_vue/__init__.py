@@ -84,9 +84,7 @@ class EmporiaRuntimeData:
     invert_solar: bool = True
     last_minute_data: dict[str, Any] = field(default_factory=dict)
     last_day_data: dict[str, Any] = field(default_factory=dict)
-    last_day_update: datetime | None = None
     last_month_data: dict[str, Any] = field(default_factory=dict)
-    last_month_update: datetime | None = None
 
 
 def redact_config_data(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -261,92 +259,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             so entities can quickly look up their data.
             """
             data: dict = await update_sensors(vue, [Scale.MINUTE.value], runtime)
-            # store this, then have the daily sensors pull from it and integrate
-            # then the daily can "true up" hourly (or more frequent) in case it's incorrect
             if data:
                 runtime.last_minute_data = data
             return data
 
         async def async_update_day_sensors() -> dict:
-            now: datetime = datetime.now(UTC)
-            if not runtime.last_day_update or (
-                now - runtime.last_day_update
-            ) > timedelta(minutes=15):
-                _LOGGER.info("Updating day sensors")
-                runtime.last_day_update = now
-                updated_day_data = await update_sensors(
-                    vue, [Scale.DAY.value], runtime
-                )
-                apply_api_update_debounce(
-                    updated_day_data, runtime.last_day_data, "day"
-                )
-                runtime.last_day_data = updated_day_data
-            else:
-                # integrate the minute data
-                _LOGGER.info("Integrating minute data into day sensors")
-                if runtime.last_minute_data:
-                    for identifier, data in runtime.last_minute_data.items():
-                        device_gid, channel_gid, _ = identifier.split("-")
-                        day_id: str = f"{device_gid}-{channel_gid}-{Scale.DAY.value}"
-                        if (
-                            data
-                            and runtime.last_day_data
-                            and day_id in runtime.last_day_data
-                            and runtime.last_day_data[day_id]
-                            and "usage" in runtime.last_day_data[day_id]
-                            and runtime.last_day_data[day_id]["usage"] is not None
-                        ):
-                            # if we just passed midnight, then reset back to zero
-                            timestamp: datetime = data["timestamp"]
-                            await check_for_midnight(
-                                timestamp, int(device_gid), day_id, runtime
-                            )
-
-                            runtime.last_day_data[day_id]["usage"] += data[
-                                "usage"
-                            ]  # already in kwh
+            """Fetch Emporia's cumulative daily totals without estimating ahead."""
+            updated_day_data = await update_sensors(
+                vue, [Scale.DAY.value], runtime
+            )
+            apply_api_update_debounce(
+                updated_day_data, runtime.last_day_data, "day"
+            )
+            runtime.last_day_data = updated_day_data
             return runtime.last_day_data
 
         async def async_update_month_sensors() -> dict:
-            now: datetime = datetime.now(UTC)
-            if not runtime.last_month_update or (
-                now - runtime.last_month_update
-            ) > timedelta(minutes=30):
-                _LOGGER.info("Updating month sensors")
-                runtime.last_month_update = now
-                updated_month_data = await update_sensors(
-                    vue, [Scale.MONTH.value], runtime
-                )
-                apply_api_update_debounce(
-                    updated_month_data,
-                    runtime.last_month_data,
-                    "month",
-                )
-                runtime.last_month_data = updated_month_data
-            else:
-                # integrate the minute data
-                _LOGGER.info("Integrating minute data into month sensors")
-                if runtime.last_minute_data:
-                    for identifier, data in runtime.last_minute_data.items():
-                        device_gid, channel_gid, _ = identifier.split("-")
-                        month_id: str = f"{device_gid}-{channel_gid}-{Scale.MONTH.value}"
-                        if (
-                            data
-                            and runtime.last_month_data
-                            and month_id in runtime.last_month_data
-                            and runtime.last_month_data[month_id]
-                            and "usage" in runtime.last_month_data[month_id]
-                            and runtime.last_month_data[month_id]["usage"] is not None
-                        ):
-                            # if we just passed the billing cycle start, reset back to zero
-                            timestamp: datetime = data["timestamp"]
-                            await check_for_new_month(
-                                timestamp, int(device_gid), month_id, runtime
-                            )
-
-                            runtime.last_month_data[month_id]["usage"] += data[
-                                "usage"
-                            ]  # already in kwh
+            """Fetch Emporia's cumulative monthly totals without estimating ahead."""
+            updated_month_data = await update_sensors(
+                vue, [Scale.MONTH.value], runtime
+            )
+            apply_api_update_debounce(
+                updated_month_data,
+                runtime.last_month_data,
+                "month",
+            )
+            runtime.last_month_data = updated_month_data
             return runtime.last_month_data
 
         coordinator_1min = None
@@ -371,7 +309,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 name="sensor",
                 update_method=async_update_month_sensors,
                 # Polling interval. Will only be polled if there are subscribers.
-                update_interval=timedelta(minutes=1),
+                update_interval=timedelta(minutes=30),
             )
             await coordinator_1mon.async_config_entry_first_refresh()
             _LOGGER.debug("1mon Update data: %s", coordinator_1mon.data)
@@ -385,7 +323,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 name="sensor",
                 update_method=async_update_day_sensors,
                 # Polling interval. Will only be polled if there are subscribers.
-                update_interval=timedelta(minutes=1),
+                update_interval=timedelta(minutes=15),
             )
             await coordinator_day_sensor.async_config_entry_first_refresh()
 
