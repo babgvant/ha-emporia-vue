@@ -61,9 +61,13 @@ async def async_setup_entry(
         config_entry.entry_id
     ]["retry_update_methods"]
     if retry_update_methods:
-        async_add_entities([EmporiaApiRetrySensor(retry_update_methods)])
+        async_add_entities(
+            [EmporiaApiRetrySensor(retry_update_methods, config_entry.entry_id)]
+        )
         if "minute" in retry_update_methods:
-            async_add_entities([EmporiaApiLatencySensor(retry_update_methods)])
+            async_add_entities(
+                [EmporiaApiLatencySensor(retry_update_methods, config_entry.entry_id)]
+            )
 
     # Add charger status sensors
     coordinator_device_status = hass.data[DOMAIN][config_entry.entry_id][
@@ -243,7 +247,15 @@ class EmporiaApiRetrySensor(EmporiaUpdateTelemetrySensor):
     _attr_icon = "mdi:cloud-refresh"
     _attr_name = "Emporia API Retries"
     _attr_native_unit_of_measurement = "retries"
-    _attr_unique_id = "sensor.emporia_vue.api_retries"
+
+    def __init__(
+        self,
+        update_methods: dict[str, TolerantUpdateMethod],
+        entry_id: str,
+    ) -> None:
+        """Initialize the API retry sensor."""
+        super().__init__(update_methods)
+        self._attr_unique_id = f"sensor.emporia_vue.api_retries.{entry_id}"
 
     @property
     def native_value(self) -> int:
@@ -282,14 +294,15 @@ class EmporiaApiLatencySensor(EmporiaUpdateTelemetrySensor):
     _attr_name = "Emporia API Latency"
     _attr_native_unit_of_measurement = UnitOfTime.MILLISECONDS
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_unique_id = "sensor.emporia_vue.api_latency"
 
     def __init__(
         self,
         update_methods: dict[str, TolerantUpdateMethod],
+        entry_id: str,
     ) -> None:
         """Initialize the API latency sensor."""
         super().__init__(update_methods, listener_names={"minute"})
+        self._attr_unique_id = f"sensor.emporia_vue.api_latency.{entry_id}"
 
     @property
     def native_value(self) -> float | None:
