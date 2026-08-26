@@ -45,6 +45,22 @@ Configuration is done directly in the Home Assistant UI, no manual config file e
 5. In the UI that opens, enter the email and password used for the Emporia App. If your account uses Google/Apple, see the [Google/Apple Accounts](#googleapple-accounts) section below.
 6. Done! You should now have a sensor for each "channel".
 
+### API Diagnostics
+
+The integration creates two diagnostic sensors for monitoring Emporia cloud
+reliability:
+
+- **Emporia API Retries** counts recoverable update failures since the
+  integration was loaded. Its attributes break out total and consecutive
+  retries for minute, daily, and monthly telemetry.
+- **Emporia API Latency** records the latest minute telemetry update duration
+  in milliseconds. This is the end-to-end API update time because PyEmVue does
+  not expose the underlying HTTP response's connection-only timing.
+
+Brief outages retain the last successful telemetry for two failed polls. A
+third consecutive failure marks the affected telemetry unavailable until the
+API recovers.
+
 ### Google/Apple Accounts
 
 If your Emporia account was created via Sign in with Google or Apple, the easiest solution is to **set an Emporia password** using the create account flow on the Emporia website or app using the same email address as you'd use with Google/Apple. Once set, you can log in using the standard email and password method above.

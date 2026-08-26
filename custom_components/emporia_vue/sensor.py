@@ -12,13 +12,14 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy, UnitOfPower
-from homeassistant.core import HomeAssistant
+from homeassistant.const import UnitOfEnergy, UnitOfPower, UnitOfTime
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .resilience import TolerantUpdateMethod
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -55,6 +56,14 @@ async def async_setup_entry(
             CurrentVuePowerSensor(coordinator_day_sensor, identifier)
             for _, identifier in enumerate(coordinator_day_sensor.data)
         )
+
+    retry_update_methods: dict[str, TolerantUpdateMethod] = hass.data[DOMAIN][
+        config_entry.entry_id
+    ]["retry_update_methods"]
+    if retry_update_methods:
+        async_add_entities([EmporiaApiRetrySensor(retry_update_methods)])
+        if "minute" in retry_update_methods:
+            async_add_entities([EmporiaApiLatencySensor(retry_update_methods)])
 
     # Add charger status sensors
     coordinator_device_status = hass.data[DOMAIN][config_entry.entry_id][
@@ -200,6 +209,115 @@ class CurrentVuePowerSensor(CoordinatorEntity, SensorEntity):  # type: ignore
         return self._scale
 
 
+class EmporiaUpdateTelemetrySensor(SensorEntity):
+    """Base entity for Emporia cloud update telemetry."""
+
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        update_methods: dict[str, TolerantUpdateMethod],
+        listener_names: set[str] | None = None,
+    ) -> None:
+        """Initialize an update telemetry sensor."""
+        self._update_methods = update_methods
+        self._listener_names = listener_names
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to update telemetry changes."""
+        await super().async_added_to_hass()
+        for name, update_method in self._update_methods.items():
+            if self._listener_names is not None and name not in self._listener_names:
+                continue
+            self.async_on_remove(update_method.add_listener(self._handle_update))
+
+    @callback
+    def _handle_update(self) -> None:
+        """Write update telemetry changes to Home Assistant."""
+        self.async_write_ha_state()
+
+
+class EmporiaApiRetrySensor(EmporiaUpdateTelemetrySensor):
+    """Expose cloud retry telemetry in Home Assistant."""
+
+    _attr_icon = "mdi:cloud-refresh"
+    _attr_name = "Emporia API Retries"
+    _attr_native_unit_of_measurement = "retries"
+    _attr_unique_id = "sensor.emporia_vue.api_retries"
+
+    @property
+    def native_value(self) -> int:
+        """Return total retries across enabled telemetry coordinators."""
+        return sum(
+            update_method.total_failures
+            for update_method in self._update_methods.values()
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return per-coordinator retry details."""
+        last_failures = [
+            update_method.last_failure
+            for update_method in self._update_methods.values()
+            if update_method.last_failure is not None
+        ]
+        return {
+            "retry_totals": {
+                name: update_method.total_failures
+                for name, update_method in self._update_methods.items()
+            },
+            "consecutive_retries": {
+                name: update_method.consecutive_failures
+                for name, update_method in self._update_methods.items()
+            },
+            "last_retry": max(last_failures).isoformat() if last_failures else None,
+        }
+
+
+class EmporiaApiLatencySensor(EmporiaUpdateTelemetrySensor):
+    """Expose end-to-end Emporia API update latency."""
+
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_icon = "mdi:timer-outline"
+    _attr_name = "Emporia API Latency"
+    _attr_native_unit_of_measurement = UnitOfTime.MILLISECONDS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_unique_id = "sensor.emporia_vue.api_latency"
+
+    def __init__(
+        self,
+        update_methods: dict[str, TolerantUpdateMethod],
+    ) -> None:
+        """Initialize the API latency sensor."""
+        super().__init__(update_methods, listener_names={"minute"})
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the latest minute telemetry update duration in milliseconds."""
+        minute_update = self._update_methods.get("minute")
+        if not minute_update or minute_update.last_duration_ms is None:
+            return None
+        return round(minute_update.last_duration_ms, 1)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return per-coordinator update durations."""
+        minute_update = self._update_methods["minute"]
+        return {
+            "update_latency_ms": {
+                name: round(update_method.last_duration_ms, 1)
+                for name, update_method in self._update_methods.items()
+                if update_method.last_duration_ms is not None
+            },
+            "last_update_attempt": (
+                minute_update.last_attempt.isoformat()
+                if minute_update.last_attempt
+                else None
+            ),
+            "measurement": "end_to_end_update_duration",
+        }
+
+
 # Known Emporia charger API responses (from historical data):
 #   Status: "Charging", "Standby", "DeviceNotConnected", ""
 #   Messages: "Charging", "Ready", "Off", "Self Test", "Offline",
@@ -288,4 +406,3 @@ class EmporiaChargerStatusSensor(CoordinatorEntity, SensorEntity):  # type: igno
             sw_version=self._device.firmware,
             manufacturer="Emporia",
         )
-
