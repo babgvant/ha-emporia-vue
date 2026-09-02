@@ -54,11 +54,12 @@ from .const import (
     SOLAR_INVERT,
     VUE_DATA,
 )
-from .hierarchy import apply_usage_hierarchy, merge_devices, selected_device_gids
 from .energy_dashboard import (
     async_add_circuits_to_energy_dashboard,
     async_setup_energy_dashboard_service,
 )
+from .hierarchy import apply_usage_hierarchy, merge_devices, selected_device_gids
+from .homes import get_homes
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -202,6 +203,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         devices: list[VueDevice] = await loop.run_in_executor(None, vue.get_devices)
         all_devices = merge_devices(devices)
+        try:
+            native_homes = await loop.run_in_executor(
+                None, get_homes, vue, all_devices
+            )
+        except Exception:  # pylint: disable=broad-except
+            native_homes = []
+            _LOGGER.debug("Unable to discover Emporia homes", exc_info=True)
         configured_roots = entry_data.get(CONF_MONITOR_GIDS)
         hierarchy_query_gids = (
             [str(gid) for gid in configured_roots]
@@ -485,6 +493,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator_day_sensor": coordinator_day_sensor,
         "coordinator_device_status": coordinator_device_status,
         "device_information": runtime.device_information,
+        "native_homes": native_homes,
         "runtime": runtime,
     }
 

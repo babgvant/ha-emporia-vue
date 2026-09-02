@@ -58,6 +58,16 @@ async def async_setup_entry(
         device_information,
         configured_virtual_gids,
     )
+    native_homes = [
+        {
+            **home,
+            "device_gids": aggregate_root_gids(
+                device_information,
+                [str(gid) for gid in home["device_gids"]],
+            ),
+        }
+        for home in hass.data[DOMAIN][config_entry.entry_id].get("native_homes", [])
+    ]
 
     def entities_for(coordinator) -> list[SensorEntity]:
         """Build channel sensors and the optional virtual aggregate."""
@@ -73,6 +83,16 @@ async def async_setup_entry(
                     virtual_source_gids,
                 )
             )
+        entities.extend(
+            EmporiaHomeSensor(
+                coordinator,
+                home["site_gid"],
+                home["name"],
+                home["device_gids"],
+            )
+            for home in native_homes
+            if home["device_gids"]
+        )
         return entities
 
     if coordinator_1min:
@@ -153,6 +173,26 @@ class VirtualHomeSensor(CoordinatorEntity, SensorEntity):  # type: ignore
             item["reset"] for item in self._source_data() if item["reset"] is not None
         }
         return resets.pop() if len(resets) == 1 else None
+
+
+class EmporiaHomeSensor(VirtualHomeSensor):
+    """Aggregate sensor for a home configured in the Emporia app."""
+
+    def __init__(
+        self,
+        coordinator,
+        site_gid: str,
+        name: str,
+        source_gids: list[int],
+    ) -> None:
+        """Initialize a native Emporia home aggregate."""
+        super().__init__(coordinator, site_gid, source_gids)
+        if self._scale == Scale.MINUTE.value:
+            self._attr_name = f"{name} Power"
+        else:
+            period = "Today" if self._scale == Scale.DAY.value else "This Month"
+            self._attr_name = f"{name} Energy {period}"
+        self._attr_unique_id = f"sensor.emporia_vue.home.{site_gid}.{self._scale}"
 
 
 class CurrentVuePowerSensor(CoordinatorEntity, SensorEntity):  # type: ignore

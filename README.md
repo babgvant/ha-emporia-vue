@@ -2,6 +2,11 @@
 
 Reads data from the Emporia Vue energy monitor. Creates a sensor for each device channel showing average usage over each minute.
 
+Homes configured in the Emporia app are discovered automatically. Each home
+gets aggregate power, energy-today, and energy-this-month sensors based on its
+assigned monitors. The existing optional Virtual Home remains available for
+custom groupings.
+
 Note: This project is not associated with or endorsed by Emporia Energy.
 
 Data is pulled from the Emporia API using the [PyEmVue python module](https://github.com/magico13/PyEmVue), also written by me.
