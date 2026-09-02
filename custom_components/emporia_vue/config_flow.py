@@ -262,10 +262,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         if self._pending_home_options
                         else list(self._pending_monitor_options),
                     ): cv.multi_select(self._pending_monitor_options),
-                    vol.Optional(
-                        CONF_VIRTUAL_HOME_GIDS,
-                        default=[],
-                    ): cv.multi_select(self._pending_monitor_options),
+                    **(
+                        {
+                            vol.Optional(
+                                CONF_VIRTUAL_HOME_GIDS,
+                                default=[],
+                            ): cv.multi_select(self._pending_monitor_options)
+                        }
+                        if not self._pending_home_options
+                        else {}
+                    ),
                     vol.Optional(
                         CONF_ENERGY_MONITOR_GIDS, default=[]
                     ): cv.multi_select(self._pending_all_monitor_options),
@@ -444,7 +450,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_updates=data,
             )
 
-        configured_home_gids = list(current_config.data.get(CONF_HOME_GIDS, []))
         data_schema: dict[vol.Optional | vol.Required, Any] = {
             vol.Optional(
                 ENABLE_1M,
@@ -475,7 +480,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
             ): cv.multi_select(self._pending_monitor_options),
         }
-        if not configured_home_gids:
+        if not self._pending_home_options:
             data_schema[
                 vol.Optional(
                     CONF_VIRTUAL_HOME_GIDS,
