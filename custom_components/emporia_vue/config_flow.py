@@ -215,10 +215,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._pending_homes = await asyncio.get_running_loop().run_in_executor(
                 None, get_homes, hub.vue, merged_devices
             )
-        except Exception:  # pylint: disable=broad-except
+        except Exception as err:  # pylint: disable=broad-except
             self._pending_homes = []
-            _LOGGER.debug(
-                "Unable to discover Emporia homes during setup", exc_info=True
+            _LOGGER.warning(
+                "Unable to discover Emporia homes during setup: %s", err
             )
         return info
 
@@ -389,11 +389,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             None, get_homes, hub.vue, merged_devices
                         )
                     )
-                except Exception:  # pylint: disable=broad-except
+                except Exception as err:  # pylint: disable=broad-except
                     self._pending_homes = []
-                    _LOGGER.debug(
-                        "Unable to discover Emporia homes during reconfiguration",
-                        exc_info=True,
+                    _LOGGER.warning(
+                        "Unable to discover Emporia homes during reconfiguration: %s",
+                        err,
                     )
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unable to retrieve monitors during reconfiguration")

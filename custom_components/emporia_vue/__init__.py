@@ -211,9 +211,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             native_homes = await loop.run_in_executor(
                 None, get_homes, vue, all_devices
             )
-        except Exception:  # pylint: disable=broad-except
+        except Exception as err:  # pylint: disable=broad-except
             native_homes = []
-            _LOGGER.debug("Unable to discover Emporia homes", exc_info=True)
+            _LOGGER.warning("Unable to discover Emporia homes: %s", err)
         configured_home_gids = entry_data.get(CONF_HOME_GIDS)
         if configured_home_gids is not None:
             selected_home_gids = {str(gid) for gid in configured_home_gids}

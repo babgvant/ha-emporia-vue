@@ -74,10 +74,11 @@ def _request_v1(vue: Any, path: str) -> Any:
             path,
             headers={"Authorization": f"Bearer {token}"},
         )
-        if response.status_code != 401:
+        if response.status_code not in (401, 403):
             break
         # PyEmVue refreshes its tokens when it sees a 401. Re-read the access
-        # token on the next iteration before falling back to the ID token.
+        # token on the next iteration before falling back to the ID token. API
+        # Gateway can use 403 when a valid token has the wrong token type.
     if response is None:
         raise ValueError("No Emporia authentication token is available")
     response.raise_for_status()

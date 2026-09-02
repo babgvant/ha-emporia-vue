@@ -133,7 +133,7 @@ def test_get_homes_falls_back_to_bearer_id_token() -> None:
             self.calls += 1
             token = kwargs["headers"]["Authorization"]
             payload = {"sites": []} if path.endswith("sites") else {"devices": []}
-            return Response(200 if token == "Bearer id-token" else 401, payload)
+            return Response(200 if token == "Bearer id-token" else 403, payload)
 
     class Vue:
         auth = Auth()
