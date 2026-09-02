@@ -81,15 +81,13 @@ def test_parse_homes_ignores_invalid_or_empty_responses() -> None:
     assert parse_homes({"sites": []}, {}) == []
 
 
-def test_get_homes_uses_bearer_access_token() -> None:
-    """The v1 sites API receives the authorization scheme used by the web app."""
+def test_get_homes_uses_pyemvue_native_authentication() -> None:
+    """Home requests let PyEmVue inject and refresh Emporia's auth token."""
     class Auth:
-        tokens = {"access_token": "access-token", "id_token": "id-token"}
-
         def request(self, method: str, path: str, **kwargs) -> Response:
             assert method == "get"
             assert path in ("v1/customers/sites", "v1/customers/devices")
-            assert kwargs["headers"] == {"Authorization": "Bearer access-token"}
+            assert kwargs == {}
             payload = {"sites": []} if path.endswith("sites") else {"devices": []}
             return Response(200, payload)
 
@@ -97,46 +95,3 @@ def test_get_homes_uses_bearer_access_token() -> None:
         auth = Auth()
 
     assert get_homes(Vue(), {}) == []
-
-
-def test_get_homes_rebuilds_header_after_token_refresh() -> None:
-    """A 401 retry uses the access token refreshed by PyEmVue."""
-    class Auth:
-        def __init__(self) -> None:
-            self.tokens = {"access_token": "old-token", "id_token": "id-token"}
-            self.calls = 0
-
-        def request(self, method: str, path: str, **kwargs) -> Response:
-            self.calls += 1
-            if self.calls == 1:
-                assert kwargs["headers"]["Authorization"] == "Bearer old-token"
-                self.tokens["access_token"] = "new-token"
-                return Response(401, {})
-            assert kwargs["headers"]["Authorization"] == "Bearer new-token"
-            payload = {"sites": []} if path.endswith("sites") else {"devices": []}
-            return Response(200, payload)
-
-    class Vue:
-        auth = Auth()
-
-    assert get_homes(Vue(), {}) == []
-    assert Vue.auth.calls == 3
-
-
-def test_get_homes_falls_back_to_bearer_id_token() -> None:
-    """Cognito deployments that authorize with the ID token are supported."""
-    class Auth:
-        tokens = {"access_token": "access-token", "id_token": "id-token"}
-        calls = 0
-
-        def request(self, method: str, path: str, **kwargs) -> Response:
-            self.calls += 1
-            token = kwargs["headers"]["Authorization"]
-            payload = {"sites": []} if path.endswith("sites") else {"devices": []}
-            return Response(200 if token == "Bearer id-token" else 403, payload)
-
-    class Vue:
-        auth = Auth()
-
-    assert get_homes(Vue(), {}) == []
-    assert Vue.auth.calls == 4

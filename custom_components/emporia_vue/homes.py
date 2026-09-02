@@ -61,26 +61,11 @@ def parse_homes(
 
 
 def _request_v1(vue: Any, path: str) -> Any:
-    """Make an authenticated request to Emporia's bearer-token v1 API."""
-    attempted_tokens: set[str] = set()
-    response = None
-    for token_name in ("access_token", "access_token", "id_token"):
-        token = vue.auth.tokens.get(token_name)
-        if not token or token in attempted_tokens:
-            continue
-        attempted_tokens.add(token)
-        response = vue.auth.request(
-            "get",
-            path,
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        if response.status_code not in (401, 403):
-            break
-        # PyEmVue refreshes its tokens when it sees a 401. Re-read the access
-        # token on the next iteration before falling back to the ID token. API
-        # Gateway can use 403 when a valid token has the wrong token type.
-    if response is None:
-        raise ValueError("No Emporia authentication token is available")
+    """Make an authenticated request using PyEmVue's native auth handling."""
+    # Auth.request injects Emporia's ``authtoken`` header with the ID token and
+    # refreshes expired tokens. Supplying an OAuth Authorization header causes
+    # the v1 API gateway to reject an otherwise valid request.
+    response = vue.auth.request("get", path)
     response.raise_for_status()
     return response
 
