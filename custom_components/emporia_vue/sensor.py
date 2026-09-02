@@ -20,6 +20,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_HOME_GIDS,
+    CONF_HOME_MONITOR_GIDS,
     CONF_MONITOR_GIDS,
     CONF_VIRTUAL_HOME,
     CONF_VIRTUAL_HOME_GIDS,
@@ -62,12 +63,18 @@ async def async_setup_entry(
         device_information,
         configured_virtual_gids,
     )
+    configured_home_monitors = config_entry.data.get(CONF_HOME_MONITOR_GIDS)
     native_homes = [
         {
             **home,
             "device_gids": aggregate_root_gids(
                 device_information,
-                [str(gid) for gid in home["device_gids"]],
+                [
+                    str(gid)
+                    for gid in home["device_gids"]
+                    if configured_home_monitors is None
+                    or str(gid) in configured_home_monitors
+                ],
             ),
         }
         for home in hass.data[DOMAIN][config_entry.entry_id].get("native_homes", [])

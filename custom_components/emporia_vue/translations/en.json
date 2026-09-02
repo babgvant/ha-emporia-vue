@@ -23,13 +23,22 @@
                 "title": "Authentication expired for {name}"
             },
             "reconfigure": {
-                "description": "Selecting a home automatically includes its assigned monitors and creates home aggregate sensors. Choose either Emporia homes or Virtual Home; they cannot be used at the same time.",
+                "description": "Choose native Emporia homes, then continue to select only monitors assigned to those homes.",
                 "data": {
                     "enable_1d": "Energy Today Sensor",
                     "enable_1m": "Power Minute Average Sensor",
                     "enable_1mon": "Energy This Month Sensor",
                     "solar_invert": "Invert Values for Solar Circuits",
                     "home_gids": "Homes to include",
+                    "monitor_gids": "Monitors to include",
+                    "virtual_home_gids": "Monitors to include in Virtual Home",
+                    "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
+                }
+            },
+            "reconfigure_home_monitors": {
+                "title": "Select home monitors",
+                "description": "Choose monitors from the selected homes. Nested subpanels are included and home totals avoid double-counting them.",
+                "data": {
                     "monitor_gids": "Monitors to include",
                     "virtual_home_gids": "Monitors to include in Virtual Home",
                     "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
@@ -42,8 +51,17 @@
                     "virtual_home_gids": "Monitors to include in Virtual Home",
                     "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
                 },
-                "description": "Choose Emporia homes to include all of their assigned monitors automatically. Select individual monitors only when you need additional devices. Emporia homes and Virtual Home cannot be used at the same time.",
-                "title": "Select monitors"
+                "description": "Choose the Emporia homes to configure. The next page will show only monitors assigned to those homes.",
+                "title": "Select homes"
+            },
+            "select_home_monitors": {
+                "title": "Select home monitors",
+                "description": "Choose monitors from the selected homes. Nested subpanels are included and home totals avoid double-counting them.",
+                "data": {
+                    "monitor_gids": "Monitors to include",
+                    "virtual_home_gids": "Monitors to include in Virtual Home",
+                    "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
+                }
             },
             "user": {
                 "data": {

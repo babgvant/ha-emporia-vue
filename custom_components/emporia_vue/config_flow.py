@@ -23,6 +23,7 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ENERGY_MONITOR_GIDS,
     CONF_HOME_GIDS,
+    CONF_HOME_MONITOR_GIDS,
     CONF_ID_TOKEN,
     CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
@@ -166,6 +167,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pending_monitor_options: dict[str, str] = {}
         self._pending_all_monitor_options: dict[str, str] = {}
         self._pending_homes: list[dict[str, Any]] = []
+        self._pending_home_gids: list[str] = []
+        self._pending_reconfigure_data: dict[str, Any] | None = None
 
     @property
     def _pending_home_options(self) -> dict[str, str]:
@@ -180,6 +183,21 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if home["site_gid"] in selected_homes:
                 selected.update(str(gid) for gid in home["device_gids"])
         return [gid for gid in self._pending_monitor_options if gid in selected]
+
+    def _home_monitor_options(self, home_gids: list[str]) -> dict[str, str]:
+        """Return all monitors assigned to selected homes, including subpanels."""
+        selected_homes = set(home_gids)
+        allowed = {
+            str(gid)
+            for home in self._pending_homes
+            if home["site_gid"] in selected_homes
+            for gid in home["device_gids"]
+        }
+        return {
+            gid: name
+            for gid, name in self._pending_all_monitor_options.items()
+            if gid in allowed
+        }
 
     async def _authenticate_and_get_monitors(
         self, user_input: dict[str, Any]
@@ -228,22 +246,33 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Select the top-level monitor trees to import."""
         if self._pending_entry_data is None:
             return self.async_abort(reason="unknown")
+        if self._pending_home_options:
+            if user_input is not None:
+                self._pending_home_gids = list(user_input.get(CONF_HOME_GIDS, []))
+                return await self.async_step_select_home_monitors()
+            return self.async_show_form(
+                step_id="select_monitors",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(
+                            CONF_HOME_GIDS,
+                            default=list(self._pending_home_options),
+                        ): cv.multi_select(self._pending_home_options),
+                    }
+                ),
+            )
         if user_input is not None:
             data = dict(self._pending_entry_data)
-            home_gids = list(user_input.get(CONF_HOME_GIDS, []))
             explicit_monitor_gids = list(user_input.get(CONF_MONITOR_GIDS, []))
-            if home_gids:
-                explicit_monitor_gids = []
             effective_monitor_gids = self._monitor_gids_for_selection(user_input)
             virtual_home_gids = [
                 gid
                 for gid in user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
                 if gid in effective_monitor_gids
             ]
-            if home_gids:
-                virtual_home_gids = []
             data[CONF_MONITOR_GIDS] = explicit_monitor_gids
-            data[CONF_HOME_GIDS] = home_gids
+            data[CONF_HOME_GIDS] = []
+            data[CONF_HOME_MONITOR_GIDS] = []
             data[CONF_VIRTUAL_HOME_GIDS] = virtual_home_gids
             data[CONF_VIRTUAL_HOME] = bool(virtual_home_gids)
             data[CONF_ENERGY_MONITOR_GIDS] = list(
@@ -255,23 +284,66 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Optional(
-                        CONF_HOME_GIDS,
-                        default=list(self._pending_home_options),
-                    ): cv.multi_select(self._pending_home_options),
-                    vol.Optional(
                         CONF_MONITOR_GIDS,
-                        default=[]
-                        if self._pending_home_options
-                        else list(self._pending_monitor_options),
+                        default=list(self._pending_monitor_options),
                     ): cv.multi_select(self._pending_monitor_options),
+                    vol.Optional(
+                        CONF_VIRTUAL_HOME_GIDS,
+                        default=[],
+                    ): cv.multi_select(self._pending_monitor_options),
+                    vol.Optional(
+                        CONF_ENERGY_MONITOR_GIDS, default=[]
+                    ): cv.multi_select(self._pending_all_monitor_options),
+                }
+            ),
+        )
+
+    async def async_step_select_home_monitors(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Select monitors scoped to the chosen native homes."""
+        if self._pending_entry_data is None:
+            return self.async_abort(reason="unknown")
+        options = self._home_monitor_options(self._pending_home_gids)
+        if not self._pending_home_gids:
+            options = self._pending_monitor_options
+        if user_input is not None:
+            selected = [
+                gid for gid in user_input.get(CONF_MONITOR_GIDS, []) if gid in options
+            ]
+            data = dict(self._pending_entry_data)
+            data[CONF_HOME_GIDS] = self._pending_home_gids
+            data[CONF_HOME_MONITOR_GIDS] = selected
+            data[CONF_MONITOR_GIDS] = selected
+            virtual_home_gids = (
+                []
+                if self._pending_home_gids
+                else [
+                    gid
+                    for gid in user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
+                    if gid in selected
+                ]
+            )
+            data[CONF_VIRTUAL_HOME_GIDS] = virtual_home_gids
+            data[CONF_VIRTUAL_HOME] = bool(virtual_home_gids)
+            data[CONF_ENERGY_MONITOR_GIDS] = list(
+                user_input.get(CONF_ENERGY_MONITOR_GIDS, [])
+            )
+            return self.async_create_entry(title=data[CONFIG_TITLE], data=data)
+        return self.async_show_form(
+            step_id="select_home_monitors",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MONITOR_GIDS, default=list(options)
+                    ): cv.multi_select(options),
                     **(
                         {
                             vol.Optional(
-                                CONF_VIRTUAL_HOME_GIDS,
-                                default=[],
-                            ): cv.multi_select(self._pending_monitor_options)
+                                CONF_VIRTUAL_HOME_GIDS, default=[]
+                            ): cv.multi_select(options)
                         }
-                        if not self._pending_home_options
+                        if not self._pending_home_gids
                         else {}
                     ),
                     vol.Optional(
@@ -423,26 +495,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(info[CUSTOMER_GID])
             self._abort_if_unique_id_mismatch(reason="wrong_account")
             home_gids = list(user_input.get(CONF_HOME_GIDS, []))
+            if self._pending_home_options:
+                self._pending_home_gids = home_gids
+                self._pending_reconfigure_data = {
+                    ENABLE_1M: user_input[ENABLE_1M],
+                    ENABLE_1D: user_input[ENABLE_1D],
+                    ENABLE_1MON: user_input[ENABLE_1MON],
+                    SOLAR_INVERT: user_input[SOLAR_INVERT],
+                }
+                return await self.async_step_reconfigure_home_monitors()
+
             explicit_monitor_gids = list(user_input.get(CONF_MONITOR_GIDS, []))
-            if home_gids:
-                explicit_monitor_gids = []
-            effective_monitor_gids = self._monitor_gids_for_selection(user_input)
-            virtual_home_gids = [
-                gid
-                for gid in user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
-                if gid in effective_monitor_gids
-            ]
-            if home_gids:
-                virtual_home_gids = []
             data = {
                 ENABLE_1M: user_input[ENABLE_1M],
                 ENABLE_1D: user_input[ENABLE_1D],
                 ENABLE_1MON: user_input[ENABLE_1MON],
                 SOLAR_INVERT: user_input[SOLAR_INVERT],
                 CONF_MONITOR_GIDS: explicit_monitor_gids,
-                CONF_HOME_GIDS: home_gids,
-                CONF_VIRTUAL_HOME_GIDS: virtual_home_gids,
-                CONF_VIRTUAL_HOME: bool(virtual_home_gids),
+                CONF_HOME_GIDS: [],
+                CONF_HOME_MONITOR_GIDS: [],
+                CONF_VIRTUAL_HOME_GIDS: list(
+                    user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
+                ),
+                CONF_VIRTUAL_HOME: bool(
+                    user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
+                ),
                 CONF_ENERGY_MONITOR_GIDS: list(
                     user_input.get(CONF_ENERGY_MONITOR_GIDS, [])
                 ),
@@ -477,14 +554,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_HOME_GIDS, list(self._pending_home_options)
                 ),
             ): cv.multi_select(self._pending_home_options),
-            vol.Optional(
-                CONF_MONITOR_GIDS,
-                default=current_config.data.get(
-                    CONF_MONITOR_GIDS, list(self._pending_monitor_options)
-                ),
-            ): cv.multi_select(self._pending_monitor_options),
         }
         if not self._pending_home_options:
+            data_schema[
+                vol.Optional(
+                    CONF_MONITOR_GIDS,
+                    default=current_config.data.get(
+                        CONF_MONITOR_GIDS, list(self._pending_monitor_options)
+                    ),
+                )
+            ] = cv.multi_select(self._pending_monitor_options)
             data_schema[
                 vol.Optional(
                     CONF_VIRTUAL_HOME_GIDS,
@@ -496,16 +575,95 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                 )
             ] = cv.multi_select(self._pending_monitor_options)
-        data_schema[
-            vol.Optional(
-                CONF_ENERGY_MONITOR_GIDS,
-                default=current_config.data.get(CONF_ENERGY_MONITOR_GIDS, []),
-            )
-        ] = cv.multi_select(self._pending_all_monitor_options)
+            data_schema[
+                vol.Optional(
+                    CONF_ENERGY_MONITOR_GIDS,
+                    default=current_config.data.get(CONF_ENERGY_MONITOR_GIDS, []),
+                )
+            ] = cv.multi_select(self._pending_all_monitor_options)
 
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema(data_schema),
+        )
+
+    async def async_step_reconfigure_home_monitors(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Select reconfiguration monitors scoped to chosen native homes."""
+        if self._pending_reconfigure_data is None:
+            return self.async_abort(reason="unknown")
+        current_config = self._get_reconfigure_entry()
+        options = self._home_monitor_options(self._pending_home_gids)
+        if not self._pending_home_gids:
+            options = self._pending_monitor_options
+        configured = current_config.data.get(
+            CONF_HOME_MONITOR_GIDS
+            if self._pending_home_gids
+            else CONF_MONITOR_GIDS
+        )
+        default_monitors = (
+            [gid for gid in configured if gid in options]
+            if configured is not None
+            else list(options)
+        )
+        if user_input is not None:
+            selected = [
+                gid for gid in user_input.get(CONF_MONITOR_GIDS, []) if gid in options
+            ]
+            virtual_home_gids = (
+                []
+                if self._pending_home_gids
+                else [
+                    gid
+                    for gid in user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
+                    if gid in selected
+                ]
+            )
+            data = {
+                **self._pending_reconfigure_data,
+                CONF_HOME_GIDS: self._pending_home_gids,
+                CONF_HOME_MONITOR_GIDS: selected,
+                CONF_MONITOR_GIDS: selected,
+                CONF_VIRTUAL_HOME_GIDS: virtual_home_gids,
+                CONF_VIRTUAL_HOME: bool(virtual_home_gids),
+                CONF_ENERGY_MONITOR_GIDS: list(
+                    user_input.get(CONF_ENERGY_MONITOR_GIDS, [])
+                ),
+                CUSTOMER_GID: current_config.data[CUSTOMER_GID],
+                CONFIG_TITLE: current_config.data[CONFIG_TITLE],
+            }
+            return self.async_update_reload_and_abort(
+                current_config,
+                data_updates=data,
+            )
+        return self.async_show_form(
+            step_id="reconfigure_home_monitors",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MONITOR_GIDS, default=default_monitors
+                    ): cv.multi_select(options),
+                    **(
+                        {
+                            vol.Optional(
+                                CONF_VIRTUAL_HOME_GIDS,
+                                default=current_config.data.get(
+                                    CONF_VIRTUAL_HOME_GIDS, []
+                                ),
+                            ): cv.multi_select(options)
+                        }
+                        if not self._pending_home_gids
+                        else {}
+                    ),
+                    vol.Optional(
+                        CONF_ENERGY_MONITOR_GIDS,
+                        default=current_config.data.get(
+                            CONF_ENERGY_MONITOR_GIDS, []
+                        ),
+                    ): cv.multi_select(self._pending_all_monitor_options),
+                }
+            ),
         )
 
     async def async_step_reauth(

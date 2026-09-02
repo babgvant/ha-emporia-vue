@@ -44,6 +44,7 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ENERGY_MONITOR_GIDS,
     CONF_HOME_GIDS,
+    CONF_HOME_MONITOR_GIDS,
     CONF_ID_TOKEN,
     CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
@@ -226,12 +227,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if configured_home_gids and native_homes:
             # Native home membership is authoritative. Do not retain explicit
             # monitor selections from a different home or an older config.
-            configured_roots = list(
-                dict.fromkeys(
+            allowed_home_gids = {
+                str(gid) for home in native_homes for gid in home["device_gids"]
+            }
+            selected_home_monitors = entry_data.get(CONF_HOME_MONITOR_GIDS)
+            configured_roots = (
+                [
                     str(gid)
-                    for home in native_homes
-                    for gid in home["device_gids"]
-                )
+                    for gid in selected_home_monitors
+                    if str(gid) in allowed_home_gids
+                ]
+                if selected_home_monitors is not None
+                else list(allowed_home_gids)
             )
         elif configured_roots is not None:
             configured_roots = list(
