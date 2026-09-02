@@ -51,6 +51,17 @@ def test_parse_homes_preserves_names_and_maps_device_ids() -> None:
     ]
 
 
+def test_parse_homes_uses_authoritative_v1_device_mapping() -> None:
+    """Modern device IDs map to usage GIDs without relying on legacy models."""
+    sites = {
+        "sites": [
+            {"site_gid": 42, "display_name": "Lake House", "device_ids": ["A"]}
+        ]
+    }
+    api_devices = {"devices": [{"device_id": "A", "device_gid": 101}]}
+    assert parse_homes(sites, {}, api_devices)[0]["device_gids"] == [101]
+
+
 def test_parse_homes_uses_stable_fallback_name() -> None:
     """A missing display name does not prevent native home support."""
     payload = {
@@ -77,9 +88,10 @@ def test_get_homes_uses_bearer_access_token() -> None:
 
         def request(self, method: str, path: str, **kwargs) -> Response:
             assert method == "get"
-            assert path == "v1/customers/sites"
+            assert path in ("v1/customers/sites", "v1/customers/devices")
             assert kwargs["headers"] == {"Authorization": "Bearer access-token"}
-            return Response(200, {"sites": []})
+            payload = {"sites": []} if path.endswith("sites") else {"devices": []}
+            return Response(200, payload)
 
     class Vue:
         auth = Auth()
@@ -101,13 +113,14 @@ def test_get_homes_rebuilds_header_after_token_refresh() -> None:
                 self.tokens["access_token"] = "new-token"
                 return Response(401, {})
             assert kwargs["headers"]["Authorization"] == "Bearer new-token"
-            return Response(200, {"sites": []})
+            payload = {"sites": []} if path.endswith("sites") else {"devices": []}
+            return Response(200, payload)
 
     class Vue:
         auth = Auth()
 
     assert get_homes(Vue(), {}) == []
-    assert Vue.auth.calls == 2
+    assert Vue.auth.calls == 3
 
 
 def test_get_homes_falls_back_to_bearer_id_token() -> None:
@@ -119,10 +132,11 @@ def test_get_homes_falls_back_to_bearer_id_token() -> None:
         def request(self, method: str, path: str, **kwargs) -> Response:
             self.calls += 1
             token = kwargs["headers"]["Authorization"]
-            return Response(200 if token == "Bearer id-token" else 401, {"sites": []})
+            payload = {"sites": []} if path.endswith("sites") else {"devices": []}
+            return Response(200 if token == "Bearer id-token" else 401, payload)
 
     class Vue:
         auth = Auth()
 
     assert get_homes(Vue(), {}) == []
-    assert Vue.auth.calls == 2
+    assert Vue.auth.calls == 4
