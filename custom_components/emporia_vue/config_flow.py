@@ -232,6 +232,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data = dict(self._pending_entry_data)
             home_gids = list(user_input.get(CONF_HOME_GIDS, []))
             explicit_monitor_gids = list(user_input.get(CONF_MONITOR_GIDS, []))
+            if home_gids:
+                explicit_monitor_gids = []
             effective_monitor_gids = self._monitor_gids_for_selection(user_input)
             virtual_home_gids = [
                 gid
@@ -422,6 +424,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_mismatch(reason="wrong_account")
             home_gids = list(user_input.get(CONF_HOME_GIDS, []))
             explicit_monitor_gids = list(user_input.get(CONF_MONITOR_GIDS, []))
+            if home_gids:
+                explicit_monitor_gids = []
             effective_monitor_gids = self._monitor_gids_for_selection(user_input)
             virtual_home_gids = [
                 gid

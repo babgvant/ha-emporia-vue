@@ -223,15 +223,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if home["site_gid"] in selected_home_gids
             ]
         configured_roots = entry_data.get(CONF_MONITOR_GIDS)
-        if configured_roots is not None:
+        if configured_home_gids and native_homes:
+            # Native home membership is authoritative. Do not retain explicit
+            # monitor selections from a different home or an older config.
             configured_roots = list(
                 dict.fromkeys(
-                    [str(gid) for gid in configured_roots]
-                    + [
-                        str(gid)
-                        for home in native_homes
-                        for gid in home["device_gids"]
-                    ]
+                    str(gid)
+                    for home in native_homes
+                    for gid in home["device_gids"]
+                )
+            )
+        elif configured_roots is not None:
+            configured_roots = list(
+                dict.fromkeys(
+                    str(gid) for gid in configured_roots
                 )
             )
         hierarchy_query_gids = (
