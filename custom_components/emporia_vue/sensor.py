@@ -19,6 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    CONF_HOME_GIDS,
     CONF_MONITOR_GIDS,
     CONF_VIRTUAL_HOME,
     CONF_VIRTUAL_HOME_GIDS,
@@ -47,6 +48,8 @@ async def async_setup_entry(
         config_entry.entry_id
     ]["device_information"]
     configured_virtual_gids = config_entry.data.get(CONF_VIRTUAL_HOME_GIDS)
+    if config_entry.data.get(CONF_HOME_GIDS):
+        configured_virtual_gids = []
     if configured_virtual_gids is None:
         # Preserve the behavior of entries created before independent selection.
         configured_virtual_gids = (

@@ -22,6 +22,7 @@ from .const import (
     AUTH_METHOD_TOKENS,
     CONF_ACCESS_TOKEN,
     CONF_ENERGY_MONITOR_GIDS,
+    CONF_HOME_GIDS,
     CONF_ID_TOKEN,
     CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
@@ -43,6 +44,7 @@ from .hierarchy import (
     merge_devices,
     monitor_options,
 )
+from .homes import get_homes
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 SENSITIVE_CONFIG_KEYS = {
@@ -163,6 +165,21 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pending_entry_data: dict[str, Any] | None = None
         self._pending_monitor_options: dict[str, str] = {}
         self._pending_all_monitor_options: dict[str, str] = {}
+        self._pending_homes: list[dict[str, Any]] = []
+
+    @property
+    def _pending_home_options(self) -> dict[str, str]:
+        """Return native Emporia homes as multi-select options."""
+        return {home["site_gid"]: home["name"] for home in self._pending_homes}
+
+    def _monitor_gids_for_selection(self, user_input: dict[str, Any]) -> list[str]:
+        """Combine explicit monitors with every monitor assigned to selected homes."""
+        selected = set(user_input.get(CONF_MONITOR_GIDS, []))
+        selected_homes = set(user_input.get(CONF_HOME_GIDS, []))
+        for home in self._pending_homes:
+            if home["site_gid"] in selected_homes:
+                selected.update(str(gid) for gid in home["device_gids"])
+        return [gid for gid in self._pending_monitor_options if gid in selected]
 
     async def _authenticate_and_get_monitors(
         self, user_input: dict[str, Any]
@@ -191,6 +208,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
         self._pending_entry_data = info
         self._pending_monitor_options = monitor_options(merged_devices)
+        try:
+            self._pending_homes = await asyncio.get_running_loop().run_in_executor(
+                None, get_homes, hub.vue, merged_devices
+            )
+        except Exception:  # pylint: disable=broad-except
+            self._pending_homes = []
+            _LOGGER.debug(
+                "Unable to discover Emporia homes during setup", exc_info=True
+            )
         return info
 
     async def async_step_select_monitors(
@@ -201,13 +227,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="unknown")
         if user_input is not None:
             data = dict(self._pending_entry_data)
-            monitor_gids = list(user_input[CONF_MONITOR_GIDS])
+            home_gids = list(user_input.get(CONF_HOME_GIDS, []))
+            explicit_monitor_gids = list(user_input.get(CONF_MONITOR_GIDS, []))
+            effective_monitor_gids = self._monitor_gids_for_selection(user_input)
             virtual_home_gids = [
                 gid
                 for gid in user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
-                if gid in monitor_gids
+                if gid in effective_monitor_gids
             ]
-            data[CONF_MONITOR_GIDS] = monitor_gids
+            if home_gids:
+                virtual_home_gids = []
+            data[CONF_MONITOR_GIDS] = explicit_monitor_gids
+            data[CONF_HOME_GIDS] = home_gids
             data[CONF_VIRTUAL_HOME_GIDS] = virtual_home_gids
             data[CONF_VIRTUAL_HOME] = bool(virtual_home_gids)
             data[CONF_ENERGY_MONITOR_GIDS] = list(
@@ -218,13 +249,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="select_monitors",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
+                    vol.Optional(
+                        CONF_HOME_GIDS,
+                        default=list(self._pending_home_options),
+                    ): cv.multi_select(self._pending_home_options),
+                    vol.Optional(
                         CONF_MONITOR_GIDS,
-                        default=list(self._pending_monitor_options),
-                    ): vol.All(
-                        cv.multi_select(self._pending_monitor_options),
-                        vol.Length(min=1),
-                    ),
+                        default=[]
+                        if self._pending_home_options
+                        else list(self._pending_monitor_options),
+                    ): cv.multi_select(self._pending_monitor_options),
                     vol.Optional(
                         CONF_VIRTUAL_HOME_GIDS,
                         default=[],
@@ -343,6 +377,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         exc_info=True,
                     )
                 self._pending_monitor_options = monitor_options(merged_devices)
+                try:
+                    self._pending_homes = (
+                        await asyncio.get_running_loop().run_in_executor(
+                            None, get_homes, hub.vue, merged_devices
+                        )
+                    )
+                except Exception:  # pylint: disable=broad-except
+                    self._pending_homes = []
+                    _LOGGER.debug(
+                        "Unable to discover Emporia homes during reconfiguration",
+                        exc_info=True,
+                    )
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unable to retrieve monitors during reconfiguration")
                 return self.async_abort(reason="cannot_connect")
@@ -362,18 +408,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             await self.async_set_unique_id(info[CUSTOMER_GID])
             self._abort_if_unique_id_mismatch(reason="wrong_account")
-            monitor_gids = list(user_input[CONF_MONITOR_GIDS])
+            home_gids = list(user_input.get(CONF_HOME_GIDS, []))
+            explicit_monitor_gids = list(user_input.get(CONF_MONITOR_GIDS, []))
+            effective_monitor_gids = self._monitor_gids_for_selection(user_input)
             virtual_home_gids = [
                 gid
                 for gid in user_input.get(CONF_VIRTUAL_HOME_GIDS, [])
-                if gid in monitor_gids
+                if gid in effective_monitor_gids
             ]
+            if home_gids:
+                virtual_home_gids = []
             data = {
                 ENABLE_1M: user_input[ENABLE_1M],
                 ENABLE_1D: user_input[ENABLE_1D],
                 ENABLE_1MON: user_input[ENABLE_1MON],
                 SOLAR_INVERT: user_input[SOLAR_INVERT],
-                CONF_MONITOR_GIDS: monitor_gids,
+                CONF_MONITOR_GIDS: explicit_monitor_gids,
+                CONF_HOME_GIDS: home_gids,
                 CONF_VIRTUAL_HOME_GIDS: virtual_home_gids,
                 CONF_VIRTUAL_HOME: bool(virtual_home_gids),
                 CONF_ENERGY_MONITOR_GIDS: list(
@@ -405,14 +456,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 default=current_config.data.get(SOLAR_INVERT, True),
             ): cv.boolean,
             vol.Required(
+                CONF_HOME_GIDS,
+                default=current_config.data.get(
+                    CONF_HOME_GIDS, list(self._pending_home_options)
+                ),
+            ): cv.multi_select(self._pending_home_options),
+            vol.Optional(
                 CONF_MONITOR_GIDS,
                 default=current_config.data.get(
                     CONF_MONITOR_GIDS, list(self._pending_monitor_options)
                 ),
-            ): vol.All(
-                cv.multi_select(self._pending_monitor_options),
-                vol.Length(min=1),
-            ),
+            ): cv.multi_select(self._pending_monitor_options),
             vol.Optional(
                 CONF_VIRTUAL_HOME_GIDS,
                 default=current_config.data.get(

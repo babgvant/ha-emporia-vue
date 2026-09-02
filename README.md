@@ -5,7 +5,9 @@ Reads data from the Emporia Vue energy monitor. Creates a sensor for each device
 Homes configured in the Emporia app are discovered automatically. Each home
 gets aggregate power, energy-today, and energy-this-month sensors based on its
 assigned monitors. The existing optional Virtual Home remains available for
-custom groupings.
+custom groupings. In the integration's reconfigure screen, selecting a home
+automatically includes all monitors assigned to it; individual monitor
+selection is only needed for devices outside the selected homes.
 
 Note: This project is not associated with or endorsed by Emporia Energy.
 

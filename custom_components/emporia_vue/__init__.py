@@ -43,6 +43,7 @@ from .const import (
     AUTH_METHOD_TOKENS,
     CONF_ACCESS_TOKEN,
     CONF_ENERGY_MONITOR_GIDS,
+    CONF_HOME_GIDS,
     CONF_ID_TOKEN,
     CONF_MONITOR_GIDS,
     CONF_REFRESH_TOKEN,
@@ -210,7 +211,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception:  # pylint: disable=broad-except
             native_homes = []
             _LOGGER.debug("Unable to discover Emporia homes", exc_info=True)
+        configured_home_gids = entry_data.get(CONF_HOME_GIDS)
+        if configured_home_gids is not None:
+            selected_home_gids = {str(gid) for gid in configured_home_gids}
+            native_homes = [
+                home
+                for home in native_homes
+                if home["site_gid"] in selected_home_gids
+            ]
         configured_roots = entry_data.get(CONF_MONITOR_GIDS)
+        if configured_roots is not None:
+            configured_roots = list(
+                dict.fromkeys(
+                    [str(gid) for gid in configured_roots]
+                    + [
+                        str(gid)
+                        for home in native_homes
+                        for gid in home["device_gids"]
+                    ]
+                )
+            )
         hierarchy_query_gids = (
             [str(gid) for gid in configured_roots]
             if configured_roots is not None
