@@ -17,6 +17,7 @@ class Response:
     def __init__(self, status_code: int, payload: dict) -> None:
         self.status_code = status_code
         self._payload = payload
+        self.text = ""
 
     def raise_for_status(self) -> None:
         """Stand in for requests.Response.raise_for_status."""
@@ -83,9 +84,9 @@ def test_parse_homes_ignores_invalid_or_empty_responses() -> None:
 
 
 def test_get_homes_uses_raw_cognito_id_token(monkeypatch) -> None:
-    """Home requests match Amplify's Cognito User Pools authorization mode."""
+    """Home requests first match Amplify's observed ID-token authorization."""
     class Auth:
-        tokens = {"id_token": "id-token"}
+        tokens = {"id_token": "id-token", "access_token": "access-token"}
 
     class Vue:
         auth = Auth()
@@ -102,3 +103,24 @@ def test_get_homes_uses_raw_cognito_id_token(monkeypatch) -> None:
 
     monkeypatch.setattr(homes.requests, "get", get)
     assert get_homes(Vue(), {}) == []
+
+
+def test_get_homes_falls_back_to_raw_access_token(monkeypatch) -> None:
+    """Accounts whose authorizer expects an access token are supported."""
+    class Auth:
+        tokens = {"id_token": "id-token", "access_token": "access-token"}
+
+    class Vue:
+        auth = Auth()
+
+    calls: list[str] = []
+
+    def get(url: str, **kwargs) -> Response:
+        token = kwargs["headers"]["Authorization"]
+        calls.append(token)
+        payload = {"sites": []} if url.endswith("sites") else {"devices": []}
+        return Response(200 if token == "access-token" else 401, payload)
+
+    monkeypatch.setattr(homes.requests, "get", get)
+    assert get_homes(Vue(), {}) == []
+    assert calls == ["id-token", "access-token", "id-token", "access-token"]

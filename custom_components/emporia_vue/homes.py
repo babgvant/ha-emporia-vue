@@ -66,19 +66,45 @@ def parse_homes(
 def _request_v1(vue: Any, path: str) -> Any:
     """Make a Cognito-authenticated request to Emporia's v1 API."""
     id_token = vue.auth.tokens.get("id_token")
-    if not id_token:
-        raise ValueError("No Emporia ID token is available")
+    access_token = vue.auth.tokens.get("access_token")
+    if not id_token and not access_token:
+        raise ValueError("No Emporia authentication token is available")
     url = f"{API_ROOT}/{path}"
-    response = requests.get(
-        url,
-        # Amplify's Cognito User Pools authorizer sends the ID token directly;
-        # this endpoint does not accept the legacy authtoken or Bearer formats.
-        headers={"Authorization": id_token},
-        timeout=(
-            getattr(vue, "connect_timeout", 6.03),
-            getattr(vue, "read_timeout", 10.03),
+    candidates = (
+        ("raw ID token", id_token),
+        ("raw access token", access_token),
+        ("Bearer ID token", f"Bearer {id_token}" if id_token else None),
+        (
+            "Bearer access token",
+            f"Bearer {access_token}" if access_token else None,
         ),
     )
+    attempted_values: set[str] = set()
+    response = None
+    attempted_schemes: list[str] = []
+    for scheme, token_value in candidates:
+        if not token_value or token_value in attempted_values:
+            continue
+        attempted_values.add(token_value)
+        attempted_schemes.append(scheme)
+        response = requests.get(
+            url,
+            headers={"Authorization": token_value},
+            timeout=(
+                getattr(vue, "connect_timeout", 6.03),
+                getattr(vue, "read_timeout", 10.03),
+            ),
+        )
+        if response.status_code not in (401, 403):
+            break
+    if response is None:
+        raise ValueError("No usable Emporia authentication token is available")
+    if response.status_code in (401, 403):
+        detail = response.text.strip().replace("\n", " ")[:300]
+        raise PermissionError(
+            f"Emporia home API rejected {', '.join(attempted_schemes)} "
+            f"with HTTP {response.status_code}: {detail or '<empty response>'}"
+        )
     response.raise_for_status()
     return response
 
