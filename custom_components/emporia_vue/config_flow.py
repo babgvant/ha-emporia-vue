@@ -195,10 +195,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             usage = await asyncio.get_running_loop().run_in_executor(
                 None,
-                hub.vue.get_device_list_usage,
-                [str(gid) for gid in merged_devices],
-                datetime.now(UTC),
-                Scale.MINUTE.value,
+                partial(
+                    hub.vue.get_device_list_usage,
+                    [str(gid) for gid in merged_devices],
+                    datetime.now(UTC),
+                    Scale.MINUTE.value,
+                    max_retry_attempts=1,
+                ),
             )
             apply_usage_hierarchy(merged_devices, usage)
         except Exception:  # pylint: disable=broad-except
@@ -365,10 +368,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 try:
                     usage = await asyncio.get_running_loop().run_in_executor(
                         None,
-                        hub.vue.get_device_list_usage,
-                        [str(gid) for gid in merged_devices],
-                        datetime.now(UTC),
-                        Scale.MINUTE.value,
+                        partial(
+                            hub.vue.get_device_list_usage,
+                            [str(gid) for gid in merged_devices],
+                            datetime.now(UTC),
+                            Scale.MINUTE.value,
+                            max_retry_attempts=1,
+                        ),
                     )
                     apply_usage_hierarchy(merged_devices, usage)
                 except Exception:  # pylint: disable=broad-except

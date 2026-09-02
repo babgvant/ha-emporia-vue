@@ -239,10 +239,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             hierarchy_usage = await loop.run_in_executor(
                 None,
-                vue.get_device_list_usage,
-                hierarchy_query_gids,
-                datetime.now(UTC),
-                Scale.MINUTE.value,
+                partial(
+                    vue.get_device_list_usage,
+                    hierarchy_query_gids,
+                    datetime.now(UTC),
+                    Scale.MINUTE.value,
+                    max_retry_attempts=1,
+                ),
             )
             apply_usage_hierarchy(all_devices, hierarchy_usage)
         except Exception:  # pylint: disable=broad-except
@@ -563,14 +566,28 @@ async def update_sensors(
         for scale in scales:
             utcnow: datetime = datetime.now(UTC)
             usage_dict: dict[int, VueUsageDevice] = await loop.run_in_executor(
-                None, vue.get_device_list_usage, runtime.device_gids, utcnow, scale
+                None,
+                partial(
+                    vue.get_device_list_usage,
+                    runtime.device_gids,
+                    utcnow,
+                    scale,
+                    max_retry_attempts=1,
+                ),
             )
             if not usage_dict:
                 _LOGGER.warning(
                     "No channels found during update for scale %s. Retrying", scale
                 )
                 usage_dict = await loop.run_in_executor(
-                    None, vue.get_device_list_usage, runtime.device_gids, utcnow, scale
+                    None,
+                    partial(
+                        vue.get_device_list_usage,
+                        runtime.device_gids,
+                        utcnow,
+                        scale,
+                        max_retry_attempts=1,
+                    ),
                 )
             if usage_dict:
                 flattened, data_time = flatten_usage_data(usage_dict, scale)
