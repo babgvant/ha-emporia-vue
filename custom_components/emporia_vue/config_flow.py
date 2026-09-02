@@ -444,6 +444,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_updates=data,
             )
 
+        configured_home_gids = list(current_config.data.get(CONF_HOME_GIDS, []))
         data_schema: dict[vol.Optional | vol.Required, Any] = {
             vol.Optional(
                 ENABLE_1M,
@@ -473,20 +474,25 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_MONITOR_GIDS, list(self._pending_monitor_options)
                 ),
             ): cv.multi_select(self._pending_monitor_options),
-            vol.Optional(
-                CONF_VIRTUAL_HOME_GIDS,
-                default=current_config.data.get(
+        }
+        if not configured_home_gids:
+            data_schema[
+                vol.Optional(
                     CONF_VIRTUAL_HOME_GIDS,
-                    current_config.data.get(CONF_MONITOR_GIDS, [])
-                    if current_config.data.get(CONF_VIRTUAL_HOME, False)
-                    else [],
-                ),
-            ): cv.multi_select(self._pending_monitor_options),
+                    default=current_config.data.get(
+                        CONF_VIRTUAL_HOME_GIDS,
+                        current_config.data.get(CONF_MONITOR_GIDS, [])
+                        if current_config.data.get(CONF_VIRTUAL_HOME, False)
+                        else [],
+                    ),
+                )
+            ] = cv.multi_select(self._pending_monitor_options)
+        data_schema[
             vol.Optional(
                 CONF_ENERGY_MONITOR_GIDS,
                 default=current_config.data.get(CONF_ENERGY_MONITOR_GIDS, []),
-            ): cv.multi_select(self._pending_all_monitor_options),
-        }
+            )
+        ] = cv.multi_select(self._pending_all_monitor_options)
 
         return self.async_show_form(
             step_id="reconfigure",
