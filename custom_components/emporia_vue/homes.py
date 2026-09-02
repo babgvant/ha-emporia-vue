@@ -45,6 +45,23 @@ def parse_homes(payload: Any, devices: dict[int, Any]) -> list[dict[str, Any]]:
 
 def get_homes(vue: Any, devices: dict[int, Any]) -> list[dict[str, Any]]:
     """Fetch native Emporia homes using PyEmVue's authenticated session."""
-    response = vue.auth.request("get", SITES_PATH)
+    attempted_tokens: set[str] = set()
+    response = None
+    for token_name in ("access_token", "access_token", "id_token"):
+        token = vue.auth.tokens.get(token_name)
+        if not token or token in attempted_tokens:
+            continue
+        attempted_tokens.add(token)
+        response = vue.auth.request(
+            "get",
+            SITES_PATH,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if response.status_code != 401:
+            break
+        # PyEmVue refreshes its tokens when it sees a 401. Re-read the access
+        # token on the next iteration before falling back to the ID token.
+    if response is None:
+        raise ValueError("No Emporia authentication token is available")
     response.raise_for_status()
     return parse_homes(response.json(), devices)
