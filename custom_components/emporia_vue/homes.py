@@ -4,6 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
+import boto3
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+from botocore.credentials import Credentials
+import requests
+
+API_ROOT = "https://api.emporiaenergy.com"
+AWS_REGION = "us-east-2"
+AWS_SERVICE = "execute-api"
+IDENTITY_POOL_ID = "us-east-2:4078e9e8-ab5b-4075-a42d-2bd65ac37ccd"
+USER_POOL_ID = "us-east-2_ghlOXVLi1"
+COGNITO_PROVIDER = f"cognito-idp.{AWS_REGION}.amazonaws.com/{USER_POOL_ID}"
 SITES_PATH = "v1/customers/sites"
 DEVICES_PATH = "v1/customers/devices"
 
@@ -60,18 +72,49 @@ def parse_homes(
     return homes
 
 
-def _request_v1(vue: Any, path: str) -> Any:
-    """Make an authenticated request using PyEmVue's native auth handling."""
-    # Auth.request injects Emporia's ``authtoken`` header with the ID token and
-    # refreshes expired tokens. Supplying an OAuth Authorization header causes
-    # the v1 API gateway to reject an otherwise valid request.
-    response = vue.auth.request("get", path)
+def _get_aws_credentials(vue: Any) -> Credentials:
+    """Exchange the Cognito ID token for credentials used by the v1 API."""
+    id_token = vue.auth.tokens.get("id_token")
+    if not id_token:
+        raise ValueError("No Emporia ID token is available")
+
+    client = boto3.client("cognito-identity", region_name=AWS_REGION)
+    logins = {COGNITO_PROVIDER: id_token}
+    identity_id = client.get_id(
+        IdentityPoolId=IDENTITY_POOL_ID,
+        Logins=logins,
+    )["IdentityId"]
+    raw_credentials = client.get_credentials_for_identity(
+        IdentityId=identity_id,
+        Logins=logins,
+    )["Credentials"]
+    return Credentials(
+        raw_credentials["AccessKeyId"],
+        raw_credentials["SecretKey"],
+        raw_credentials["SessionToken"],
+    )
+
+
+def _request_v1(vue: Any, path: str, credentials: Credentials) -> Any:
+    """Make an AWS SigV4-authenticated request to Emporia's v1 API."""
+    url = f"{API_ROOT}/{path}"
+    aws_request = AWSRequest(method="GET", url=url)
+    SigV4Auth(credentials, AWS_SERVICE, AWS_REGION).add_auth(aws_request)
+    response = requests.get(
+        url,
+        headers=dict(aws_request.headers.items()),
+        timeout=(
+            getattr(vue, "connect_timeout", 6.03),
+            getattr(vue, "read_timeout", 10.03),
+        ),
+    )
     response.raise_for_status()
     return response
 
 
 def get_homes(vue: Any, devices: dict[int, Any]) -> list[dict[str, Any]]:
     """Fetch native Emporia homes using authoritative v1 device identifiers."""
-    sites = _request_v1(vue, SITES_PATH).json()
-    api_devices = _request_v1(vue, DEVICES_PATH).json()
+    credentials = _get_aws_credentials(vue)
+    sites = _request_v1(vue, SITES_PATH, credentials).json()
+    api_devices = _request_v1(vue, DEVICES_PATH, credentials).json()
     return parse_homes(sites, devices, api_devices)
