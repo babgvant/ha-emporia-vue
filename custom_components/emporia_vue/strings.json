@@ -33,18 +33,18 @@
         "description": "Choose the Emporia homes to configure. The next page will show only monitors assigned to those homes.",
         "data": {
           "home_gids": "Homes to include",
-          "monitor_gids": "Monitors to include",
+          "monitor_gids": "Monitors aggregated under the Emporia Home virtual monitor",
           "virtual_home_gids": "Monitors to include in Virtual Home",
-          "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
+          "energy_monitor_gids": "Monitors added to the Energy Dashboard"
         }
       },
       "select_home_monitors": {
         "title": "Select home monitors",
         "description": "Choose monitors from the selected homes. Nested subpanels are included and home totals avoid double-counting them.",
         "data": {
-          "monitor_gids": "Monitors to include",
+          "monitor_gids": "Monitors aggregated under the Emporia Home virtual monitor",
           "virtual_home_gids": "Monitors to include in Virtual Home",
-          "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
+          "energy_monitor_gids": "Monitors added to the Energy Dashboard"
         }
       },
       "reconfigure": {
@@ -55,18 +55,18 @@
           "enable_1mon": "[%key:component::emporia_vue::config::step::email_password::data::enable_1mon%]",
           "solar_invert": "[%key:component::emporia_vue::config::step::email_password::data::solar_invert%]",
           "home_gids": "Homes to include",
-          "monitor_gids": "Monitors to include",
+          "monitor_gids": "Monitors aggregated under the Emporia Home virtual monitor",
           "virtual_home_gids": "Monitors to include in Virtual Home",
-          "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
+          "energy_monitor_gids": "Monitors added to the Energy Dashboard"
         }
       },
       "reconfigure_home_monitors": {
         "title": "Select home monitors",
         "description": "Choose monitors from the selected homes. Nested subpanels are included and home totals avoid double-counting them.",
         "data": {
-          "monitor_gids": "Monitors to include",
+          "monitor_gids": "Monitors aggregated under the Emporia Home virtual monitor",
           "virtual_home_gids": "Monitors to include in Virtual Home",
-          "energy_monitor_gids": "Monitors whose circuits are added to Energy Dashboard"
+          "energy_monitor_gids": "Monitors added to the Energy Dashboard"
         }
       },
       "reauth_confirm": {

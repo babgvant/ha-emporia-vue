@@ -199,6 +199,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if gid in allowed
         }
 
+    @staticmethod
+    def _selected_gids(
+        user_input: dict[str, Any], key: str, options: Mapping[str, str]
+    ) -> list[str]:
+        """Return selected monitor IDs that are present in the displayed options."""
+        return [gid for gid in user_input.get(key, []) if gid in options]
+
     async def _authenticate_and_get_monitors(
         self, user_input: dict[str, Any]
     ) -> dict[str, Any]:
@@ -308,9 +315,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not self._pending_home_gids:
             options = self._pending_monitor_options
         if user_input is not None:
-            selected = [
-                gid for gid in user_input.get(CONF_MONITOR_GIDS, []) if gid in options
-            ]
+            selected = self._selected_gids(user_input, CONF_MONITOR_GIDS, options)
             data = dict(self._pending_entry_data)
             data[CONF_HOME_GIDS] = self._pending_home_gids
             data[CONF_HOME_MONITOR_GIDS] = selected
@@ -326,8 +331,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             data[CONF_VIRTUAL_HOME_GIDS] = virtual_home_gids
             data[CONF_VIRTUAL_HOME] = bool(virtual_home_gids)
-            data[CONF_ENERGY_MONITOR_GIDS] = list(
-                user_input.get(CONF_ENERGY_MONITOR_GIDS, [])
+            data[CONF_ENERGY_MONITOR_GIDS] = self._selected_gids(
+                user_input, CONF_ENERGY_MONITOR_GIDS, options
             )
             return self.async_create_entry(title=data[CONFIG_TITLE], data=data)
         return self.async_show_form(
@@ -348,7 +353,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     vol.Optional(
                         CONF_ENERGY_MONITOR_GIDS, default=[]
-                    ): cv.multi_select(self._pending_all_monitor_options),
+                    ): cv.multi_select(options),
                 }
             ),
         )
@@ -608,9 +613,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else list(options)
         )
         if user_input is not None:
-            selected = [
-                gid for gid in user_input.get(CONF_MONITOR_GIDS, []) if gid in options
-            ]
+            selected = self._selected_gids(user_input, CONF_MONITOR_GIDS, options)
             virtual_home_gids = (
                 []
                 if self._pending_home_gids
@@ -627,8 +630,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_MONITOR_GIDS: selected,
                 CONF_VIRTUAL_HOME_GIDS: virtual_home_gids,
                 CONF_VIRTUAL_HOME: bool(virtual_home_gids),
-                CONF_ENERGY_MONITOR_GIDS: list(
-                    user_input.get(CONF_ENERGY_MONITOR_GIDS, [])
+                CONF_ENERGY_MONITOR_GIDS: self._selected_gids(
+                    user_input, CONF_ENERGY_MONITOR_GIDS, options
                 ),
                 CUSTOMER_GID: current_config.data[CUSTOMER_GID],
                 CONFIG_TITLE: current_config.data[CONFIG_TITLE],
@@ -658,10 +661,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     vol.Optional(
                         CONF_ENERGY_MONITOR_GIDS,
-                        default=current_config.data.get(
-                            CONF_ENERGY_MONITOR_GIDS, []
-                        ),
-                    ): cv.multi_select(self._pending_all_monitor_options),
+                        default=[
+                            gid
+                            for gid in current_config.data.get(
+                                CONF_ENERGY_MONITOR_GIDS, []
+                            )
+                            if gid in options
+                        ],
+                    ): cv.multi_select(options),
                 }
             ),
         )
