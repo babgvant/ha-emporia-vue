@@ -5,7 +5,10 @@ from typing import Any
 from pyemvue import pyemvue
 from pyemvue.device import ChargerDevice, VueDevice
 
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import (
+    DeviceInfo,
+    async_get_device_id_by_identifier,
+)
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
@@ -80,7 +83,11 @@ class EmporiaChargerEntity(CoordinatorEntity):
             model=self._device.model,
             sw_version=self._device.firmware,
             manufacturer="Emporia",
-            via_device=(DOMAIN, str(self._device.parent_device_gid))
+            via_device_id=async_get_device_id_by_identifier(
+                self.hass,
+                (DOMAIN, str(self._device.parent_device_gid)),
+                config_entry_id=self.platform.config_entry.entry_id,
+            )
             if self._device.parent_device_gid
             else None,
         )
