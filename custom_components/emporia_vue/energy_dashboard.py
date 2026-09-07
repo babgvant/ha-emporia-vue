@@ -92,7 +92,11 @@ def energy_dashboard_monitor_roles(
         for gid, device in devices.items():
             if device.parent_device_gid != parent_gid:
                 continue
-            if getattr(device, "ev_charger", None):
+            has_branch_circuits = any(
+                is_consumptive_circuit(channel)
+                for channel in getattr(device, "channels", [])
+            )
+            if getattr(device, "ev_charger", None) or not has_branch_circuits:
                 discrete_monitors.add(gid)
             elif gid not in branch_monitors:
                 branch_monitors.add(gid)

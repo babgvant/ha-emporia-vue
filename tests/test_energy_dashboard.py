@@ -1,6 +1,6 @@
 """Tests for Energy Dashboard bulk configuration helpers."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 
 from custom_components.emporia_vue.energy_dashboard import (
@@ -25,6 +25,7 @@ class Channel:
 class Device:
     parent_device_gid: int = 0
     ev_charger: bool = False
+    channels: list[Channel] = field(default_factory=list)
 
 
 def test_basic_bulk_add_and_existing_configuration() -> None:
@@ -128,13 +129,24 @@ def test_parent_selection_treats_nested_evse_as_one_circuit() -> None:
 
 def test_nested_subpanel_exposes_its_circuits_recursively() -> None:
     devices = {
-        1: Device(),
-        2: Device(parent_device_gid=1),
-        3: Device(parent_device_gid=2),
+        1: Device(channels=[Channel("1")]),
+        2: Device(parent_device_gid=1, channels=[Channel("1")]),
+        3: Device(parent_device_gid=2, channels=[Channel("1")]),
     }
     branch_monitors, discrete_circuits = energy_dashboard_monitor_roles(devices, [1])
     assert branch_monitors == {1, 2, 3}
     assert discrete_circuits == set()
+
+
+def test_nested_main_only_device_is_discrete_without_charger_metadata() -> None:
+    """Telemetry shape still identifies an EVSE if merged metadata is absent."""
+    devices = {
+        1: Device(channels=[Channel("1")]),
+        2: Device(parent_device_gid=1, channels=[Channel("1,2,3")]),
+    }
+    branch_monitors, discrete_circuits = energy_dashboard_monitor_roles(devices, [1])
+    assert branch_monitors == {1}
+    assert discrete_circuits == {2}
 
 
 def test_parent_selection_wins_over_stored_nested_selection() -> None:
