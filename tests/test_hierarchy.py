@@ -115,6 +115,19 @@ def test_virtual_home_uses_only_selected_roots() -> None:
     assert aggregate_root_gids(devices, ["1", "2", "4"]) == [1, 4]
 
 
+def test_aggregate_excludes_nested_monitors_at_every_depth() -> None:
+    """A nested monitor contributes through its root and is never summed twice."""
+    devices = merge_devices(
+        [
+            Device(1, "Main"),
+            Device(2, "Subpanel", parent_device_gid=1),
+            Device(3, "Nested subpanel", parent_device_gid=2),
+        ]
+    )
+    assert aggregate_root_gids(devices, ["1", "2", "3"]) == [1]
+    assert aggregate_root_gids(devices, ["1", "3"]) == [1]
+
+
 def test_new_selected_root_joins_virtual_home() -> None:
     """Reconfiguration can add a new root to the stable virtual aggregate."""
     devices = device_map()

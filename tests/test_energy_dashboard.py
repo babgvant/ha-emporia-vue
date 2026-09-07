@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from custom_components.emporia_vue.energy_dashboard import (
     circuit_energy_unique_id,
     descendant_gids,
+    energy_dashboard_monitor_roles,
     is_consumptive_circuit,
     merge_device_consumption,
     parse_circuit_energy_unique_id,
@@ -110,3 +111,26 @@ def test_combined_monitor_tree_excludes_unrelated_roots() -> None:
         4: Device(),
     }
     assert descendant_gids(devices, 1) == {1, 2, 3}
+
+
+def test_parent_selection_treats_nested_monitor_as_one_circuit() -> None:
+    devices = {
+        1: Device(),
+        2: Device(parent_device_gid=1),
+        3: Device(parent_device_gid=2),
+        4: Device(),
+    }
+    explicit, nested_circuits = energy_dashboard_monitor_roles(devices, [1])
+    assert explicit == {1}
+    assert nested_circuits == {2}
+
+
+def test_explicit_nested_selection_exposes_its_own_circuits() -> None:
+    devices = {
+        1: Device(),
+        2: Device(parent_device_gid=1),
+        3: Device(parent_device_gid=2),
+    }
+    explicit, nested_circuits = energy_dashboard_monitor_roles(devices, [2])
+    assert explicit == {2}
+    assert nested_circuits == {3}

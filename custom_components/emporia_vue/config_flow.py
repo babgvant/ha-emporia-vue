@@ -185,7 +185,22 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return [gid for gid in self._pending_monitor_options if gid in selected]
 
     def _home_monitor_options(self, home_gids: list[str]) -> dict[str, str]:
-        """Return all monitors assigned to selected homes, including subpanels."""
+        """Return top-level monitors assigned to selected homes."""
+        selected_homes = set(home_gids)
+        allowed = {
+            str(gid)
+            for home in self._pending_homes
+            if home["site_gid"] in selected_homes
+            for gid in home["device_gids"]
+        }
+        return {
+            gid: name
+            for gid, name in self._pending_monitor_options.items()
+            if gid in allowed
+        }
+
+    def _home_all_monitor_options(self, home_gids: list[str]) -> dict[str, str]:
+        """Return every monitor assigned to selected homes for explicit actions."""
         selected_homes = set(home_gids)
         allowed = {
             str(gid)
@@ -312,8 +327,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if self._pending_entry_data is None:
             return self.async_abort(reason="unknown")
         options = self._home_monitor_options(self._pending_home_gids)
+        energy_options = self._home_all_monitor_options(self._pending_home_gids)
         if not self._pending_home_gids:
             options = self._pending_monitor_options
+            energy_options = self._pending_all_monitor_options
         if user_input is not None:
             selected = self._selected_gids(user_input, CONF_MONITOR_GIDS, options)
             data = dict(self._pending_entry_data)
@@ -332,7 +349,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data[CONF_VIRTUAL_HOME_GIDS] = virtual_home_gids
             data[CONF_VIRTUAL_HOME] = bool(virtual_home_gids)
             data[CONF_ENERGY_MONITOR_GIDS] = self._selected_gids(
-                user_input, CONF_ENERGY_MONITOR_GIDS, options
+                user_input, CONF_ENERGY_MONITOR_GIDS, energy_options
             )
             return self.async_create_entry(title=data[CONFIG_TITLE], data=data)
         return self.async_show_form(
@@ -353,7 +370,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     vol.Optional(
                         CONF_ENERGY_MONITOR_GIDS, default=[]
-                    ): cv.multi_select(options),
+                    ): cv.multi_select(energy_options),
                 }
             ),
         )
@@ -600,8 +617,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="unknown")
         current_config = self._get_reconfigure_entry()
         options = self._home_monitor_options(self._pending_home_gids)
+        energy_options = self._home_all_monitor_options(self._pending_home_gids)
         if not self._pending_home_gids:
             options = self._pending_monitor_options
+            energy_options = self._pending_all_monitor_options
         configured = current_config.data.get(
             CONF_HOME_MONITOR_GIDS
             if self._pending_home_gids
@@ -631,7 +650,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_VIRTUAL_HOME_GIDS: virtual_home_gids,
                 CONF_VIRTUAL_HOME: bool(virtual_home_gids),
                 CONF_ENERGY_MONITOR_GIDS: self._selected_gids(
-                    user_input, CONF_ENERGY_MONITOR_GIDS, options
+                    user_input, CONF_ENERGY_MONITOR_GIDS, energy_options
                 ),
                 CUSTOMER_GID: current_config.data[CUSTOMER_GID],
                 CONFIG_TITLE: current_config.data[CONFIG_TITLE],
@@ -666,9 +685,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             for gid in current_config.data.get(
                                 CONF_ENERGY_MONITOR_GIDS, []
                             )
-                            if gid in options
+                            if gid in energy_options
                         ],
-                    ): cv.multi_select(options),
+                    ): cv.multi_select(energy_options),
                 }
             ),
         )

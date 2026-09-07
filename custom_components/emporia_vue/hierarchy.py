@@ -112,10 +112,21 @@ def aggregate_root_gids(
 ) -> list[int]:
     """Return selected aggregate sources without double-counting descendants."""
     selected = {int(gid) for gid in selected_roots if int(gid) in devices}
+
+    def has_selected_ancestor(gid: int) -> bool:
+        seen = {gid}
+        parent_gid = devices[gid].parent_device_gid
+        while parent_gid in devices and parent_gid not in seen:
+            if parent_gid in selected:
+                return True
+            seen.add(parent_gid)
+            parent_gid = devices[parent_gid].parent_device_gid
+        return False
+
     return [
         gid
         for gid in devices
-        if gid in selected and devices[gid].parent_device_gid not in selected
+        if gid in selected and not has_selected_ancestor(gid)
     ]
 
 

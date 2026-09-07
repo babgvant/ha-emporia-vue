@@ -117,7 +117,7 @@
         },
         "add_to_energy_dashboard": {
             "name": "Add circuits to Energy Dashboard",
-            "description": "Adds eligible branch circuits from a Vue monitor and its nested monitors to Individual devices in the Energy Dashboard.",
+            "description": "Adds eligible branch circuits from a Vue monitor to Individual devices in the Energy Dashboard. A nested monitor is added as one discrete circuit.",
             "fields": {
                 "device_id": {
                     "name": "Emporia Vue monitor",

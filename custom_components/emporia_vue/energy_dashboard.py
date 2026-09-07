@@ -61,6 +61,24 @@ def descendant_gids(devices: Mapping[int, Any], root_gid: int) -> set[int]:
     return included
 
 
+def energy_dashboard_monitor_roles(
+    devices: Mapping[int, Any], selected_gids: Iterable[int]
+) -> tuple[set[int], set[int]]:
+    """Return explicit monitors and their direct nested circuit monitors.
+
+    Explicit monitors contribute branch circuits. A directly nested monitor
+    contributes its main total as one discrete circuit instead of exposing its
+    internal channels and double-counting its load.
+    """
+    explicit = {int(gid) for gid in selected_gids if int(gid) in devices}
+    nested = {
+        gid
+        for gid, device in devices.items()
+        if device.parent_device_gid in explicit and gid not in explicit
+    }
+    return explicit, nested
+
+
 def circuit_energy_unique_id(device_gid: int, channel_num: str) -> str:
     """Return the stable daily cumulative-energy entity unique ID."""
     return (
@@ -147,7 +165,7 @@ async def async_setup_energy_dashboard_service(hass: HomeAssistant) -> None:
             )
 
         result = await async_add_circuits_to_energy_dashboard(
-            hass, entry_id, descendant_gids(devices, root_gid)
+            hass, entry_id, {root_gid}
         )
         _LOGGER.info(
             "Energy Dashboard update for %s: %s",
@@ -176,14 +194,18 @@ async def async_add_circuits_to_energy_dashboard(
         for entry in entity_registry.entities.values()
         if entry.config_entry_id == entry_id and entry.platform == DOMAIN
     ]
-    selected_gids = set(selected_gids)
+    selected_gids, nested_circuit_gids = energy_dashboard_monitor_roles(
+        devices, selected_gids
+    )
     selected_channel_gids = {
         int(channel.device_gid)
         for gid in selected_gids
         if gid in devices
         for channel in devices[gid].channels
     }
-    allowed_entity_gids = selected_gids | selected_channel_gids
+    allowed_entity_gids = (
+        selected_gids | nested_circuit_gids | selected_channel_gids
+    )
     channel_lookup = {
         (int(channel.device_gid), str(channel.channel_num)): channel
         for device in devices.values()
@@ -203,7 +225,13 @@ async def async_add_circuits_to_energy_dashboard(
         if channel is None or entry.disabled_by is not None:
             skipped_incompatible += 1
             continue
-        if not is_consumptive_circuit(channel):
+        is_nested_monitor_total = (
+            gid in nested_circuit_gids and channel_num == "1,2,3"
+        )
+        if gid in nested_circuit_gids and not is_nested_monitor_total:
+            skipped_aggregate += 1
+            continue
+        if not is_nested_monitor_total and not is_consumptive_circuit(channel):
             skipped_aggregate += 1
             continue
         statistic_ids.append(entry.entity_id)
@@ -227,5 +255,6 @@ async def async_add_circuits_to_energy_dashboard(
         "skipped_aggregate": skipped_aggregate,
         "skipped_incompatible": skipped_incompatible,
         "selected_monitors": len(selected_gids),
+        "nested_monitor_circuits": len(nested_circuit_gids),
         "registered_daily_entities": registered_daily_entities,
     }

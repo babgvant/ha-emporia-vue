@@ -56,8 +56,8 @@ Configuration is done directly in the Home Assistant UI, no manual config file e
 
 In **Developer Tools > Actions**, run
 `emporia_vue.add_to_energy_dashboard` and select an Emporia Vue monitor. The
-action adds the monitor's eligible branch circuits, including circuits on its
-nested monitors, to **Energy > Individual devices**. It skips panel totals,
+action adds the monitor's eligible branch circuits. A directly nested monitor
+is added as one discrete circuit using its main total. It skips other panel totals,
 balance/grid/solar channels, and circuits that are already configured. Existing
 Energy Dashboard sources and settings are preserved.
 
