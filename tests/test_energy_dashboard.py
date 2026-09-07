@@ -24,6 +24,7 @@ class Channel:
 @dataclass
 class Device:
     parent_device_gid: int = 0
+    ev_charger: bool = False
 
 
 def test_basic_bulk_add_and_existing_configuration() -> None:
@@ -113,10 +114,10 @@ def test_combined_monitor_tree_excludes_unrelated_roots() -> None:
     assert descendant_gids(devices, 1) == {1, 2, 3}
 
 
-def test_parent_selection_treats_nested_monitor_as_one_circuit() -> None:
+def test_parent_selection_treats_nested_evse_as_one_circuit() -> None:
     devices = {
         1: Device(),
-        2: Device(parent_device_gid=1),
+        2: Device(parent_device_gid=1, ev_charger=True),
         3: Device(parent_device_gid=2),
         4: Device(),
     }
@@ -125,12 +126,24 @@ def test_parent_selection_treats_nested_monitor_as_one_circuit() -> None:
     assert nested_circuits == {2}
 
 
-def test_explicit_nested_selection_exposes_its_own_circuits() -> None:
+def test_nested_subpanel_exposes_its_circuits_recursively() -> None:
     devices = {
         1: Device(),
         2: Device(parent_device_gid=1),
         3: Device(parent_device_gid=2),
     }
-    explicit, nested_circuits = energy_dashboard_monitor_roles(devices, [2])
-    assert explicit == {2}
-    assert nested_circuits == {3}
+    branch_monitors, discrete_circuits = energy_dashboard_monitor_roles(devices, [1])
+    assert branch_monitors == {1, 2, 3}
+    assert discrete_circuits == set()
+
+
+def test_parent_selection_wins_over_stored_nested_selection() -> None:
+    """Legacy parent-and-child selections still add the child as one circuit."""
+    devices = {
+        1: Device(),
+        2: Device(parent_device_gid=1, ev_charger=True),
+        3: Device(parent_device_gid=2),
+    }
+    explicit, nested_circuits = energy_dashboard_monitor_roles(devices, [1, 2])
+    assert explicit == {1}
+    assert nested_circuits == {2}

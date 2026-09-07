@@ -22,7 +22,7 @@ set_charger_current:
 
 add_to_energy_dashboard:
   name: Add circuits to Energy Dashboard
-  description: Adds eligible branch circuits from an Emporia Vue monitor to Individual devices in the Energy Dashboard. A nested monitor is added as one discrete circuit.
+  description: Adds eligible branch circuits from an Emporia Vue monitor and nested subpanels to Individual devices in the Energy Dashboard. A nested EVSE is added as one discrete circuit.
   fields:
     device_id:
       name: Emporia Vue monitor

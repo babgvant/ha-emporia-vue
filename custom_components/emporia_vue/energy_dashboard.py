@@ -64,19 +64,40 @@ def descendant_gids(devices: Mapping[int, Any], root_gid: int) -> set[int]:
 def energy_dashboard_monitor_roles(
     devices: Mapping[int, Any], selected_gids: Iterable[int]
 ) -> tuple[set[int], set[int]]:
-    """Return explicit monitors and their direct nested circuit monitors.
+    """Return branch monitors and nested devices represented as one circuit.
 
-    Explicit monitors contribute branch circuits. A directly nested monitor
-    contributes its main total as one discrete circuit instead of exposing its
-    internal channels and double-counting its load.
+    Selected monitors and nested subpanels contribute branch circuits. A nested
+    EVSE contributes its main total as one discrete circuit instead.
     """
-    explicit = {int(gid) for gid in selected_gids if int(gid) in devices}
-    nested = {
-        gid
-        for gid, device in devices.items()
-        if device.parent_device_gid in explicit and gid not in explicit
-    }
-    return explicit, nested
+    requested = {int(gid) for gid in selected_gids if int(gid) in devices}
+
+    def has_requested_ancestor(gid: int) -> bool:
+        seen = {gid}
+        parent_gid = devices[gid].parent_device_gid
+        while parent_gid in devices and parent_gid not in seen:
+            if parent_gid in requested:
+                return True
+            seen.add(parent_gid)
+            parent_gid = devices[parent_gid].parent_device_gid
+        return False
+
+    # A selected ancestor takes precedence. This also handles existing config
+    # entries that stored both a parent and its nested monitor.
+    roots = {gid for gid in requested if not has_requested_ancestor(gid)}
+    branch_monitors = set(roots)
+    discrete_monitors: set[int] = set()
+    pending = list(roots)
+    while pending:
+        parent_gid = pending.pop()
+        for gid, device in devices.items():
+            if device.parent_device_gid != parent_gid:
+                continue
+            if getattr(device, "ev_charger", None):
+                discrete_monitors.add(gid)
+            elif gid not in branch_monitors:
+                branch_monitors.add(gid)
+                pending.append(gid)
+    return branch_monitors, discrete_monitors
 
 
 def circuit_energy_unique_id(device_gid: int, channel_num: str) -> str:
