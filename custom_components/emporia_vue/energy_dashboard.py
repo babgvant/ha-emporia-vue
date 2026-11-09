@@ -21,6 +21,7 @@ from homeassistant.helpers import (
 )
 
 from .const import DOMAIN
+from .hierarchy import channel_name
 
 SERVICE_ADD_TO_ENERGY_DASHBOARD = "add_to_energy_dashboard"
 ATTR_DEVICE_ID = "device_id"
@@ -135,18 +136,38 @@ def parse_circuit_energy_unique_id(unique_id: str) -> tuple[int, str] | None:
     return int(match.group(1)), match.group(2)
 
 
+def circuit_energy_name(device: Any, channel: Any) -> str:
+    """Keep circuit labels distinct when HA groups entities under one monitor."""
+    monitor_name = (
+        device.display_name or device.device_name or f"Emporia monitor {device.device_gid}"
+    )
+    prefix = channel_name(device, channel)
+    return f"{monitor_name} {prefix}" if prefix else monitor_name
+
+
 def merge_device_consumption(
-    existing: Iterable[dict[str, Any]], statistic_ids: Iterable[str]
+    existing: Iterable[dict[str, Any]], statistic_ids: Iterable[str],
+    names: Mapping[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], int, int]:
-    """Append missing statistics without changing existing Energy entries."""
-    result = list(existing)
+    """Add statistics and fill missing names, preserving user configuration."""
+    names = names or {}
+    result = [dict(item) for item in existing]
+    requested = list(statistic_ids)
+    requested_ids = set(requested)
+    for item in result:
+        statistic_id = item.get("stat_consumption")
+        if statistic_id in requested_ids and not item.get("name") and names.get(statistic_id):
+            item["name"] = names[statistic_id]
     configured = {item.get("stat_consumption") for item in result}
     added = already_configured = 0
-    for statistic_id in statistic_ids:
+    for statistic_id in requested:
         if statistic_id in configured:
             already_configured += 1
             continue
-        result.append({"stat_consumption": statistic_id})
+        item = {"stat_consumption": statistic_id}
+        if names.get(statistic_id):
+            item["name"] = names[statistic_id]
+        result.append(item)
         configured.add(statistic_id)
         added += 1
     return result, added, already_configured
@@ -236,7 +257,13 @@ async def async_add_circuits_to_energy_dashboard(
         for device in devices.values()
         for channel in device.channels
     }
+    channel_devices = {
+        (int(channel.device_gid), str(channel.channel_num)): device
+        for device in devices.values()
+        for channel in device.channels
+    }
     statistic_ids: list[str] = []
+    names: dict[str, str] = {}
     skipped_aggregate = skipped_incompatible = 0
     registered_daily_entities = 0
     for entry in registered_entries:
@@ -260,6 +287,9 @@ async def async_add_circuits_to_energy_dashboard(
             skipped_aggregate += 1
             continue
         statistic_ids.append(entry.entity_id)
+        names[entry.entity_id] = circuit_energy_name(
+            channel_devices[(gid, channel_num)], channel
+        )
 
     update_lock = hass.data[DOMAIN].setdefault(
         DATA_ENERGY_UPDATE_LOCK, asyncio.Lock()
@@ -267,10 +297,11 @@ async def async_add_circuits_to_energy_dashboard(
     async with update_lock:
         manager = await async_get_manager(hass)
         preferences = manager.data or manager.default_preferences()
+        existing = preferences.get("device_consumption", [])
         merged, added, already_configured = merge_device_consumption(
-            preferences.get("device_consumption", []), statistic_ids
+            existing, statistic_ids, names
         )
-        if added:
+        if merged != existing:
             # EnergyManager applies a partial update, preserving all other prefs.
             await manager.async_update({"device_consumption": merged})
 

@@ -67,6 +67,11 @@ monitor under **Monitors whose circuits are added to Energy Dashboard**. This
 explicit selection includes combined subpanels without relying on hierarchy
 discovery and is reapplied safely whenever the integration loads.
 
+Circuit labels include the monitor and circuit names from Emporia (for example,
+`HS2 Kitchen`). Unnamed circuits use their circuit number. Rerunning the action
+also fills missing names on previously added circuits while preserving custom
+Energy Dashboard names and other settings.
+
 Enable the integration's **Energy Today Sensor** option before using the action.
 When the action is called with response data enabled, its result reports added,
 already configured, aggregate-skipped, and incompatible circuit counts.

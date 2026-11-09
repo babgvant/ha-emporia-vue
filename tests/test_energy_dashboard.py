@@ -1,10 +1,14 @@
 """Tests for Energy Dashboard bulk configuration helpers."""
 
+import asyncio
 from dataclasses import dataclass, field
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from custom_components.emporia_vue.energy_dashboard import (
     circuit_energy_unique_id,
+    circuit_energy_name,
+    async_add_circuits_to_energy_dashboard,
     descendant_gids,
     energy_dashboard_monitor_roles,
     is_consumptive_circuit,
@@ -48,6 +52,85 @@ def test_idempotency() -> None:
     )
     assert second == first
     assert (added, already) == (0, 2)
+
+
+def test_energy_names_include_circuit_and_monitor() -> None:
+    device = SimpleNamespace(device_gid=1, display_name="HS2", device_name="Vue")
+    assert circuit_energy_name(device, SimpleNamespace(channel_num="4", name="Kitchen")) == "HS2 Kitchen"
+    assert circuit_energy_name(device, SimpleNamespace(channel_num="5", name="HS2")) == "HS2 Circuit 5"
+    assert circuit_energy_name(device, SimpleNamespace(channel_num="6", name=None)) == "HS2 Circuit 6"
+    assert circuit_energy_name(device, SimpleNamespace(channel_num="1,2,3", name="Main")) == "HS2"
+
+
+def test_rerun_repairs_missing_names_and_preserves_custom_settings() -> None:
+    existing = [
+        {"stat_consumption": "sensor.kitchen", "stat_rate": "sensor.kitchen_power"},
+        {"stat_consumption": "sensor.dryer", "name": "My dryer"},
+        {"stat_consumption": "sensor.other"},
+    ]
+    names = {"sensor.kitchen": "HS2 Kitchen", "sensor.dryer": "HS2 Dryer"}
+    merged, added, already = merge_device_consumption(existing, names, names)
+    assert merged == [
+        {"stat_consumption": "sensor.kitchen", "stat_rate": "sensor.kitchen_power", "name": "HS2 Kitchen"},
+        existing[1],
+        existing[2],
+    ]
+    assert "name" not in existing[0]
+    assert (added, already) == (0, 2)
+    assert merge_device_consumption(merged, names, names) == (merged, 0, 2)
+
+
+def test_new_circuits_save_names_without_duplicates() -> None:
+    names = {"sensor.kitchen": "HS2 Kitchen", "sensor.dryer": "HS2 Dryer"}
+    merged, added, already = merge_device_consumption([], names, names)
+    assert merged == [
+        {"stat_consumption": "sensor.kitchen", "name": "HS2 Kitchen"},
+        {"stat_consumption": "sensor.dryer", "name": "HS2 Dryer"},
+    ]
+    assert (added, already) == (2, 0)
+
+
+def test_bulk_add_persists_name_repairs_without_new_circuits() -> None:
+    """A rerun must save repairs even when the added count is zero."""
+    async def run() -> None:
+        channel = SimpleNamespace(
+            device_gid=1, channel_num="4", name="Kitchen", type="Consumption"
+        )
+        device = SimpleNamespace(
+            device_gid=1, display_name="HS2", device_name="Vue",
+            parent_device_gid=0, channels=[channel],
+        )
+        entry = SimpleNamespace(
+            config_entry_id="entry", platform="emporia_vue", disabled_by=None,
+            unique_id=circuit_energy_unique_id(1, "4"), entity_id="sensor.kitchen",
+        )
+        existing = [{"stat_consumption": "sensor.kitchen"}]
+        manager = SimpleNamespace(
+            data={"device_consumption": existing}, async_update=AsyncMock()
+        )
+        hass = SimpleNamespace(data={
+            "emporia_vue": {"entry": {"device_information": {1: device}}}
+        })
+        with (
+            patch("custom_components.emporia_vue.energy_dashboard.er.async_get",
+                  return_value=SimpleNamespace(entities={entry.entity_id: entry})),
+            patch("custom_components.emporia_vue.energy_dashboard.async_get_manager",
+                  new=AsyncMock(return_value=manager)),
+        ):
+            result = await async_add_circuits_to_energy_dashboard(hass, "entry", [1])
+            assert result["added"] == 0
+            assert result["already_configured"] == 1
+            update = {"device_consumption": [
+                {"stat_consumption": "sensor.kitchen", "name": "HS2 Kitchen"}
+            ]}
+            manager.async_update.assert_awaited_once_with(update)
+            assert existing == [{"stat_consumption": "sensor.kitchen"}]
+            manager.data = update
+            manager.async_update.reset_mock()
+            await async_add_circuits_to_energy_dashboard(hass, "entry", [1])
+            manager.async_update.assert_not_awaited()
+
+    asyncio.run(run())
 
 
 def test_unrelated_energy_configuration_is_not_part_of_partial_update() -> None:
