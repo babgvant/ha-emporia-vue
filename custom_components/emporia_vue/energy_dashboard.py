@@ -19,6 +19,7 @@ from homeassistant.helpers import (
     device_registry as dr,
     entity_registry as er,
 )
+from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
 from .hierarchy import channel_name
@@ -26,6 +27,7 @@ from .hierarchy import channel_name
 SERVICE_ADD_TO_ENERGY_DASHBOARD = "add_to_energy_dashboard"
 ATTR_DEVICE_ID = "device_id"
 DATA_ENERGY_UPDATE_LOCK = "energy_dashboard_update_lock"
+ENERGY_NAMES_STORAGE_VERSION = 1
 
 _LOGGER = logging.getLogger(__name__)
 _AGGREGATE_CHANNELS = {
@@ -148,16 +150,37 @@ def circuit_energy_name(device: Any, channel: Any) -> str:
 def merge_device_consumption(
     existing: Iterable[dict[str, Any]], statistic_ids: Iterable[str],
     names: Mapping[str, str] | None = None,
+    generated_names: dict[str, str | None] | None = None,
 ) -> tuple[list[dict[str, Any]], int, int]:
-    """Add statistics and fill missing names, preserving user configuration."""
+    """Sync generated labels and record ownership in generated_names.
+
+    A string is the last label we wrote; None records a manual override. Legacy
+    labels are adopted only if absent or equal to the current Emporia label.
+    """
     names = names or {}
+    if generated_names is None:
+        generated_names = {}
     result = [dict(item) for item in existing]
     requested = list(statistic_ids)
     requested_ids = set(requested)
     for item in result:
         statistic_id = item.get("stat_consumption")
-        if statistic_id in requested_ids and not item.get("name") and names.get(statistic_id):
+        if statistic_id not in requested_ids or not names.get(statistic_id):
+            continue
+        current_name = item.get("name")
+        if statistic_id in generated_names:
+            previous_name = generated_names[statistic_id]
+            managed = not current_name or (
+                previous_name is not None and current_name == previous_name
+            )
+        else:
+            managed = not current_name or current_name == names[statistic_id]
+        if managed:
             item["name"] = names[statistic_id]
+            generated_names[statistic_id] = names[statistic_id]
+        else:
+            # Keep this override even if a future Emporia rename matches it.
+            generated_names[statistic_id] = None
     configured = {item.get("stat_consumption") for item in result}
     added = already_configured = 0
     for statistic_id in requested:
@@ -167,6 +190,7 @@ def merge_device_consumption(
         item = {"stat_consumption": statistic_id}
         if names.get(statistic_id):
             item["name"] = names[statistic_id]
+            generated_names[statistic_id] = names[statistic_id]
         result.append(item)
         configured.add(statistic_id)
         added += 1
@@ -295,15 +319,34 @@ async def async_add_circuits_to_energy_dashboard(
         DATA_ENERGY_UPDATE_LOCK, asyncio.Lock()
     )
     async with update_lock:
+        # Keep ownership outside Energy preferences, whose schema only accepts
+        # HA's own fields. Stable unique IDs survive entity_id changes.
+        store = Store(hass, ENERGY_NAMES_STORAGE_VERSION, f"{DOMAIN}.energy_names.{entry_id}")
+        stored_names = await store.async_load() or {}
+        generated_names = {
+            entry.entity_id: stored_names[entry.unique_id]
+            for entry in registered_entries
+            if entry.unique_id in stored_names
+        }
         manager = await async_get_manager(hass)
         preferences = manager.data or manager.default_preferences()
         existing = preferences.get("device_consumption", [])
         merged, added, already_configured = merge_device_consumption(
-            existing, statistic_ids, names
+            existing, statistic_ids, names, generated_names
         )
         if merged != existing:
             # EnergyManager applies a partial update, preserving all other prefs.
             await manager.async_update({"device_consumption": merged})
+        updated_names = {
+            **stored_names,
+            **{
+                entry.unique_id: generated_names[entry.entity_id]
+                for entry in registered_entries
+                if entry.entity_id in names
+            },
+        }
+        if updated_names != stored_names:
+            await store.async_save(updated_names)
 
     return {
         "added": added,

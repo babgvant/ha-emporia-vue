@@ -90,6 +90,54 @@ def test_new_circuits_save_names_without_duplicates() -> None:
     assert (added, already) == (2, 0)
 
 
+def test_generated_names_follow_renames_but_manual_names_stay_manual() -> None:
+    generated = {}
+    names = {"sensor.garage_10": "Garage Circuit 10"}
+    merged, _, _ = merge_device_consumption([], names, names, generated)
+    names["sensor.garage_10"] = "Garage Freezer"
+    merged, added, already = merge_device_consumption(merged, names, names, generated)
+    assert merged[0]["name"] == "Garage Freezer"
+    assert generated == names
+    assert (added, already) == (0, 1)
+
+    merged[0]["name"] = "My freezer"
+    merged, _, _ = merge_device_consumption(merged, names, names, generated)
+    assert merged[0]["name"] == "My freezer"
+    assert generated == {"sensor.garage_10": None}
+    # Matching Emporia later must not silently reclaim a manual label.
+    names["sensor.garage_10"] = "My freezer"
+    merged, _, _ = merge_device_consumption(merged, names, names, generated)
+    names["sensor.garage_10"] = "Garage Refrigerator"
+    merged, _, _ = merge_device_consumption(merged, names, names, generated)
+    assert merged[0]["name"] == "My freezer"
+
+
+def test_legacy_names_are_adopted_conservatively_and_can_be_reset() -> None:
+    names = {"sensor.10": "Garage Freezer", "sensor.11": "Garage Lights"}
+    generated = {}
+    existing = [
+        {"stat_consumption": "sensor.10", "name": "Garage Freezer"},
+        {"stat_consumption": "sensor.11", "name": "Old or manual label"},
+    ]
+    merged, _, _ = merge_device_consumption(existing, names, names, generated)
+    assert merged == existing
+    assert generated == {"sensor.10": "Garage Freezer", "sensor.11": None}
+    merged[1]["name"] = ""
+    merged, _, _ = merge_device_consumption(merged, names, names, generated)
+    assert merged[1]["name"] == "Garage Lights"
+    assert generated == names
+
+
+def test_unselected_circuits_keep_their_names_and_tracking() -> None:
+    existing = [{"stat_consumption": "sensor.other", "name": "Original"}]
+    generated = {"sensor.other": "Original"}
+    merged, _, _ = merge_device_consumption(
+        existing, [], {"sensor.other": "Changed"}, generated
+    )
+    assert merged == existing
+    assert generated == {"sensor.other": "Original"}
+
+
 def test_bulk_add_persists_name_repairs_without_new_circuits() -> None:
     """A rerun must save repairs even when the added count is zero."""
     async def run() -> None:
@@ -111,7 +159,20 @@ def test_bulk_add_persists_name_repairs_without_new_circuits() -> None:
         hass = SimpleNamespace(data={
             "emporia_vue": {"entry": {"device_information": {1: device}}}
         })
+        persisted = {}
+
+        async def save_names(data):
+            persisted.clear()
+            persisted.update(data)
+
+        # A fresh Store is constructed on every call, as after a HA restart.
+        store = SimpleNamespace(
+            async_load=AsyncMock(side_effect=lambda: dict(persisted)),
+            async_save=AsyncMock(side_effect=save_names),
+        )
         with (
+            patch("custom_components.emporia_vue.energy_dashboard.Store",
+                  return_value=store),
             patch("custom_components.emporia_vue.energy_dashboard.er.async_get",
                   return_value=SimpleNamespace(entities={entry.entity_id: entry})),
             patch("custom_components.emporia_vue.energy_dashboard.async_get_manager",
@@ -129,6 +190,24 @@ def test_bulk_add_persists_name_repairs_without_new_circuits() -> None:
             manager.async_update.reset_mock()
             await async_add_circuits_to_energy_dashboard(hass, "entry", [1])
             manager.async_update.assert_not_awaited()
+            assert persisted == {entry.unique_id: "HS2 Kitchen"}
+            # Both an Emporia rename and HA entity_id rename survive reloads.
+            channel.name = "Freezer"
+            entry.entity_id = "sensor.renamed_kitchen"
+            manager.data["device_consumption"][0]["stat_consumption"] = entry.entity_id
+            await async_add_circuits_to_energy_dashboard(hass, "entry", [1])
+            manager.async_update.assert_awaited_once_with({"device_consumption": [
+                {"stat_consumption": entry.entity_id, "name": "HS2 Freezer"}
+            ]})
+            assert persisted == {entry.unique_id: "HS2 Freezer"}
+            manager.data = {"device_consumption": [
+                {"stat_consumption": entry.entity_id, "name": "Custom freezer"}
+            ]}
+            manager.async_update.reset_mock()
+            channel.name = "Refrigerator"
+            await async_add_circuits_to_energy_dashboard(hass, "entry", [1])
+            manager.async_update.assert_not_awaited()
+            assert persisted == {entry.unique_id: None}
 
     asyncio.run(run())
 

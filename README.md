@@ -69,8 +69,15 @@ discovery and is reapplied safely whenever the integration loads.
 
 Circuit labels include the monitor and circuit names from Emporia (for example,
 `HS2 Kitchen`). Unnamed circuits use their circuit number. Rerunning the action
-also fills missing names on previously added circuits while preserving custom
-Energy Dashboard names and other settings.
+or reconfiguring refreshes integration-generated labels from Emporia while
+preserving names edited in the Energy Dashboard and other settings. Label
+ownership is saved across restarts and entity ID changes.
+
+On upgrade, existing labels matching the current Emporia name are adopted for
+future updates. Existing differing labels are preserved because older versions
+did not record whether they were generated or manually edited. To adopt an
+already-stale label, clear its name in Energy configuration, then rerun the
+action before changing the name in Emporia again.
 
 Enable the integration's **Energy Today Sensor** option before using the action.
 When the action is called with response data enabled, its result reports added,
