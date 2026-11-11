@@ -52,6 +52,15 @@ Configuration is done directly in the Home Assistant UI, no manual config file e
 5. In the UI that opens, enter the email and password used for the Emporia App. If your account uses Google/Apple, see the [Google/Apple Accounts](#googleapple-accounts) section below.
 6. Done! You should now have a sensor for each "channel".
 
+### Combined Vue monitors
+
+Some installations combine two physical Vue monitors into one logical
+service in the Emporia app (for example, two 200A panels wired to make up a
+400A service). The integration detects these pairs and groups the linked
+monitor under its primary sibling, the same way a nested subpanel is
+grouped, instead of listing it as its own selectable top-level monitor. Both
+monitors keep their own real sensors; nothing is summed together.
+
 ### Add circuits to the Energy Dashboard
 
 In **Developer Tools > Actions**, run

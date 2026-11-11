@@ -63,6 +63,36 @@ def parse_homes(
     return homes
 
 
+def parse_combined_vue_links(payload: Any) -> dict[int, int]:
+    """Map combined-Vue LINKED device GIDs to their PRIMARY sibling's GID.
+
+    A combined Vue setup wires two physical Vue monitors to one larger
+    service (e.g. two 200A panels making up a 400A service), and Emporia's
+    own apps present the pair as a single logical device. This is not
+    exposed by PyEmVue, so it is parsed from the same v1 device payload
+    used for native home discovery.
+    """
+    if not isinstance(payload, dict) or not isinstance(payload.get("devices"), list):
+        return {}
+
+    gid_by_device_id: dict[str, int] = {
+        entry["device_id"]: int(entry["device_gid"])
+        for entry in payload["devices"]
+        if isinstance(entry, dict)
+        and entry.get("device_id") is not None
+        and entry.get("device_gid") is not None
+    }
+    links: dict[int, int] = {}
+    for entry in payload["devices"]:
+        if not isinstance(entry, dict) or entry.get("combined_vue") != "LINKED":
+            continue
+        device_gid = gid_by_device_id.get(entry.get("device_id"))
+        primary_gid = gid_by_device_id.get(entry.get("primary_vue_device_id"))
+        if device_gid is not None and primary_gid is not None:
+            links[device_gid] = primary_gid
+    return links
+
+
 def _request_v1(vue: Any, path: str) -> Any:
     """Make a Cognito-authenticated request to Emporia's v1 API."""
     id_token = vue.auth.tokens.get("id_token")
@@ -114,3 +144,9 @@ def get_homes(vue: Any, devices: dict[int, Any]) -> list[dict[str, Any]]:
     sites = _request_v1(vue, SITES_PATH).json()
     api_devices = _request_v1(vue, DEVICES_PATH).json()
     return parse_homes(sites, devices, api_devices)
+
+
+def get_combined_vue_links(vue: Any) -> dict[int, int]:
+    """Fetch combined-Vue LINKED-to-PRIMARY device GID pairs."""
+    api_devices = _request_v1(vue, DEVICES_PATH).json()
+    return parse_combined_vue_links(api_devices)

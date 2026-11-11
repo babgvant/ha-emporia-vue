@@ -36,6 +36,24 @@ def apply_usage_hierarchy(
     return devices
 
 
+def apply_combined_vue_links(
+    devices: dict[int, Any], combined_links: dict[int, int]
+) -> dict[int, Any]:
+    """Attach combined-Vue LINKED monitors under their PRIMARY sibling.
+
+    Never overwrites a parent a device already has (e.g. from
+    :func:`apply_usage_hierarchy`), and ignores links to devices not present.
+    """
+    for linked_gid, primary_gid in combined_links.items():
+        if (
+            linked_gid in devices
+            and primary_gid in devices
+            and not devices[linked_gid].parent_device_gid
+        ):
+            devices[linked_gid].parent_device_gid = primary_gid
+    return devices
+
+
 def top_level_devices(devices: dict[int, Any]) -> list[Any]:
     """Return selectable roots; tolerate missing or stale parent references."""
     gids = set(devices)

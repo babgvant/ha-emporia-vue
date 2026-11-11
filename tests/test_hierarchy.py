@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from custom_components.emporia_vue.hierarchy import (
     aggregate_root_gids,
     all_monitor_options,
+    apply_combined_vue_links,
     apply_usage_hierarchy,
     channel_name,
     device_identifier,
@@ -169,6 +170,31 @@ def test_energy_options_include_combined_subpanels() -> None:
         "3": "Monitor B",
         "4": "Monitor C",
     }
+
+
+def test_combined_vue_link_groups_linked_monitor_under_primary() -> None:
+    """A combined-Vue LINKED monitor is no longer a selectable top-level root."""
+    devices = merge_devices([Device(1, "HN"), Device(2, "HN2")])
+    apply_combined_vue_links(devices, {2: 1})
+    assert devices[2].parent_device_gid == 1
+    assert monitor_options(devices) == {"1": "HN"}
+    assert selected_device_gids(devices, ["1"]) == {1, 2}
+
+
+def test_combined_vue_link_never_overwrites_an_existing_parent() -> None:
+    """Usage-discovered subpanel parents take priority over combined-Vue links."""
+    devices = merge_devices(
+        [Device(1, "Main"), Device(2, "Subpanel", parent_device_gid=1), Device(3, "HN")]
+    )
+    apply_combined_vue_links(devices, {2: 3})
+    assert devices[2].parent_device_gid == 1
+
+
+def test_combined_vue_link_ignores_unknown_gids() -> None:
+    """Stale or unresolved combined-Vue links are dropped, not guessed."""
+    devices = merge_devices([Device(1, "HN")])
+    apply_combined_vue_links(devices, {99: 1, 1: 99})
+    assert devices[1].parent_device_gid == 0
 
 
 def test_duplicate_and_unnamed_ct_names_fall_back_to_circuit_number() -> None:

@@ -41,11 +41,12 @@ from .const import (
 )
 from .hierarchy import (
     all_monitor_options,
+    apply_combined_vue_links,
     apply_usage_hierarchy,
     merge_devices,
     monitor_options,
 )
-from .homes import get_homes
+from .homes import get_combined_vue_links, get_homes
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 SENSITIVE_CONFIG_KEYS = {
@@ -232,6 +233,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception:  # pylint: disable=broad-except
             _LOGGER.warning(
                 "Unable to discover combined monitor hierarchy during setup",
+                exc_info=True,
+            )
+        try:
+            combined_vue_links = await asyncio.get_running_loop().run_in_executor(
+                None, get_combined_vue_links, hub.vue
+            )
+            apply_combined_vue_links(merged_devices, combined_vue_links)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.warning(
+                "Unable to discover combined Vue monitor pairs during setup",
                 exc_info=True,
             )
         self._pending_entry_data = info
@@ -465,6 +476,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 except Exception:  # pylint: disable=broad-except
                     _LOGGER.warning(
                         "Unable to discover combined monitor hierarchy during reconfiguration",
+                        exc_info=True,
+                    )
+                try:
+                    combined_vue_links = (
+                        await asyncio.get_running_loop().run_in_executor(
+                            None, get_combined_vue_links, hub.vue
+                        )
+                    )
+                    apply_combined_vue_links(merged_devices, combined_vue_links)
+                except Exception:  # pylint: disable=broad-except
+                    _LOGGER.warning(
+                        "Unable to discover combined Vue monitor pairs during"
+                        " reconfiguration",
                         exc_info=True,
                     )
                 self._pending_monitor_options = monitor_options(merged_devices)

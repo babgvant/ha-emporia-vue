@@ -3,7 +3,12 @@
 from dataclasses import dataclass
 
 from custom_components.emporia_vue import homes
-from custom_components.emporia_vue.homes import get_homes, parse_homes
+from custom_components.emporia_vue.homes import (
+    get_combined_vue_links,
+    get_homes,
+    parse_combined_vue_links,
+    parse_homes,
+)
 
 
 @dataclass
@@ -124,3 +129,75 @@ def test_get_homes_falls_back_to_raw_access_token(monkeypatch) -> None:
     monkeypatch.setattr(homes.requests, "get", get)
     assert get_homes(Vue(), {}) == []
     assert calls == ["id-token", "access-token", "id-token", "access-token"]
+
+
+def test_parse_combined_vue_links_maps_linked_to_primary_gid() -> None:
+    """A LINKED device resolves to its PRIMARY sibling's device GID."""
+    payload = {
+        "devices": [
+            {"device_id": "PRIMARY-ID", "device_gid": 1, "combined_vue": "PRIMARY"},
+            {
+                "device_id": "LINKED-ID",
+                "device_gid": 2,
+                "combined_vue": "LINKED",
+                "primary_vue_device_id": "PRIMARY-ID",
+            },
+            {"device_id": "OTHER-ID", "device_gid": 3, "combined_vue": "NONE"},
+        ]
+    }
+    assert parse_combined_vue_links(payload) == {2: 1}
+
+
+def test_parse_combined_vue_links_ignores_invalid_or_empty_responses() -> None:
+    """Accounts without combined Vue pairs remain backward compatible."""
+    assert parse_combined_vue_links(None) == {}
+    assert parse_combined_vue_links({}) == {}
+    assert parse_combined_vue_links({"devices": []}) == {}
+
+
+def test_parse_combined_vue_links_ignores_unresolvable_primary() -> None:
+    """A LINKED entry whose primary wasn't returned is dropped, not guessed."""
+    payload = {
+        "devices": [
+            {
+                "device_id": "LINKED-ID",
+                "device_gid": 2,
+                "combined_vue": "LINKED",
+                "primary_vue_device_id": "MISSING-ID",
+            }
+        ]
+    }
+    assert parse_combined_vue_links(payload) == {}
+
+
+def test_get_combined_vue_links_uses_v1_device_endpoint(monkeypatch) -> None:
+    """Combined Vue discovery reuses the authenticated v1 devices request."""
+    class Auth:
+        tokens = {"id_token": "id-token", "access_token": "access-token"}
+
+    class Vue:
+        auth = Auth()
+
+    def get(url: str, **kwargs) -> Response:
+        assert url == "https://api.emporiaenergy.com/v1/customers/devices"
+        return Response(
+            200,
+            {
+                "devices": [
+                    {
+                        "device_id": "PRIMARY-ID",
+                        "device_gid": 1,
+                        "combined_vue": "PRIMARY",
+                    },
+                    {
+                        "device_id": "LINKED-ID",
+                        "device_gid": 2,
+                        "combined_vue": "LINKED",
+                        "primary_vue_device_id": "PRIMARY-ID",
+                    },
+                ]
+            },
+        )
+
+    monkeypatch.setattr(homes.requests, "get", get)
+    assert get_combined_vue_links(Vue()) == {2: 1}

@@ -60,8 +60,13 @@ from .energy_dashboard import (
     async_add_circuits_to_energy_dashboard,
     async_setup_energy_dashboard_service,
 )
-from .hierarchy import apply_usage_hierarchy, merge_devices, selected_device_gids
-from .homes import get_homes
+from .hierarchy import (
+    apply_combined_vue_links,
+    apply_usage_hierarchy,
+    merge_devices,
+    selected_device_gids,
+)
+from .homes import get_combined_vue_links, get_homes
 from .resilience import TolerantUpdateMethod
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -267,6 +272,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.warning(
                 "Unable to discover combined monitor hierarchy from usage data",
                 exc_info=True,
+            )
+        try:
+            combined_vue_links = await loop.run_in_executor(
+                None, get_combined_vue_links, vue
+            )
+            apply_combined_vue_links(all_devices, combined_vue_links)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.warning(
+                "Unable to discover combined Vue monitor pairs", exc_info=True
             )
         included_gids = selected_device_gids(all_devices, configured_roots)
         energy_monitor_gids = {
